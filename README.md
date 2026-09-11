@@ -1,28 +1,56 @@
 # TaskbarLayoutTint v1.5.3
 
-Windows 10 x64 utility that makes the current keyboard language visible at a glance.
+Windows 10 x64 utility that makes the active keyboard language visible without permanent polling.
 
-## What it does
+## Behavior
 
-- **RU** — normal Windows taskbar and normal cursor scheme.
-- **EN** — taskbar background becomes light blue `#B7E9FF`.
-- On EN, only the standard **Arrow** and **Hand** cursors are tinted blue with a dark outline.
-- I-Beam, resize, busy, move and other service cursors remain standard Windows cursors.
-- No overlay window over the taskbar.
-- No permanent polling.
-- No mouse hook.
+| Language | Taskbar | Cursor |
+|---|---|---|
+| **RU** | Normal Windows taskbar | Normal Windows cursor scheme |
+| **EN** | Light-blue `#B7E9FF` taskbar background | Light-blue **Arrow** and **Hand** with dark outline |
 
-The app is event-driven: it reacts to keyboard-layout shortcut events and foreground-window changes, then updates the taskbar/cursor state.
+`I-Beam`, resize, busy, move, cross and other utility cursors remain the normal Windows cursors, so text/editing cursors keep their contrast.
 
-## Current build
+## Architecture
 
-`TaskbarLayoutTint_COMPOSITION_CURSOR_v1.5.3_20260911`
+- Event-driven `WH_KEYBOARD_LL` shortcut detection.
+- Foreground-window change notifications.
+- Direct Windows taskbar composition — **no overlay window**.
+- Dedicated visual worker, separate from the keyboard hook.
+- MSAA is used only as an event-time fallback when the foreground-thread HKL cannot be read.
+- **No permanent language polling.**
+- **No mouse hook.**
+- Windows theme/accent registry values are not modified.
+
+Current build ID:
+
+```text
+TaskbarLayoutTint_COMPOSITION_CURSOR_v1.5.3_20260911
+```
 
 Target: **Windows 10 x64**.
 
+## Download the tested Windows build
+
+Open **Actions** → **Build Windows x64** → the latest successful run, then download the artifact:
+
+```text
+TaskbarLayoutTint-v1.5.3-Win10-x64
+```
+
+The artifact contains the Windows EXE and a ZIP with:
+
+- `TaskbarLayoutTint_v1_5_3.exe`
+- `TaskbarLayoutTint_v1_5_3.exe.manifest`
+- `RUN_ALL_AND_INSTALL.cmd`
+- `STATUS.cmd`
+- `UNINSTALL.cmd`
+- `README_RU.txt`
+- `BUILD_ID.txt`
+
 ## Install
 
-Use either:
+After downloading and extracting the artifact package, either run:
 
 ```text
 RUN_ALL_AND_INSTALL.cmd
@@ -34,7 +62,7 @@ or double-click:
 TaskbarLayoutTint_v1_5_3.exe
 ```
 
-Before installation, the program runs an acceptance test and CPU test. If a gate fails, installation is not completed. Previous test versions are cleaned up and the normal taskbar/cursor scheme is restored first.
+Before installation the program runs its Windows-side acceptance test and a real CPU test. If a gate fails, installation is not completed.
 
 Report path:
 
@@ -42,26 +70,42 @@ Report path:
 %USERPROFILE%\Downloads\TaskbarLayoutTint_v1_5_3_REPORT.txt
 ```
 
-## Uninstall
+## Build from source
 
-Run:
+Requirements:
+
+- Go 1.23.x
+- Python 3
+
+On Windows run:
 
 ```text
-UNINSTALL.cmd
+BUILD_FROM_SOURCE.cmd
 ```
 
-## Source
+Two large Win32 source files are stored as checked-in byte fragments in `source_fragments/`. `ASSEMBLE_SOURCE.py` reconstructs them before testing/building. This assembly is deterministic; the checked-in SHA-256 values and validation report are included in the repository.
 
-The complete Go source is in [`source/`](source/).
+The GitHub Actions workflow performs the same assembly, runs tests and Windows `go vet`, then cross-compiles the Windows x64 executable.
 
-No third-party Go modules are used.
+## Validation
+
+See:
+
+- `TEST_REPORT_v1_5_3_FINAL.txt`
+- `STATIC_AUDIT_v1_5_3.json`
+- `SHA256SUMS.txt`
+
+The delivered v1.5.3 was validated with repeated unit/state tests, race/checkptr tests, Linux/Windows vet, Windows x64 builds and static/binary audits.
+
+## Source layout
+
+- `source/` — normal Go source files.
+- `source_fragments/` — exact fragments for `app_windows.go` and `winapi_windows.go`.
+- `ASSEMBLE_SOURCE.py` — reconstructs those two files.
+- `.github/workflows/build.yml` — CI test/build/package workflow.
 
 ## Notes
 
-- This build was tested for Windows 10 x64.
-- The prebuilt EXE is unsigned, so Windows SmartScreen may show an “Unknown publisher” warning.
-- System theme/accent registry values are not modified.
-
-## Version 1.5.3 change
-
-Earlier builds tinted more system cursor types. On light/gray backgrounds the thin I-Beam could become hard to see. v1.5.3 now tints only **Arrow** and **Hand**; all text/service cursors stay standard Windows cursors.
+- The prebuilt EXE is unsigned, so Windows SmartScreen may show an **Unknown publisher** warning.
+- This version is intended for Windows 10 x64.
+- v1.5.3 tints only Arrow and Hand; text and utility cursor types stay in the user's normal Windows cursor scheme.
