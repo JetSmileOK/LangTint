@@ -54,7 +54,7 @@ func getParent(hwnd uintptr) uintptr {
 
 func getClassName(hwnd uintptr) string {
 	buf := make([]uint16, 128)
-	r, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(fbuf[0])), uintptr(len(buf)))
+	r, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	if r == 0 {
 		return ""
 	}
