@@ -9,7 +9,7 @@ The [official terms](https://signpath.org/terms.html) require an OSI-approved li
 Owner checklist:
 - Confirm rights to the project's code and the MIT license, MFA for GitHub/SignPath, and signing roles.
 - Publish a clearly marked unsigned release after Windows acceptance; record the release/download URL.
-- Apply at https://signpath.org/apply.html using `docs/SIGNPATH_APPLICATION.md` as a factual draft. Do not claim approval or sponsorship in the application.
+- Apply at https://signpath.org/apply.html using `docs/signing/signpath-application.md` as a factual draft. Do not claim approval or sponsorship in the application.
 - After approval, install the SignPath GitHub App with access to this repository and configure the GitHub trusted build system.
 - Add Windows VERSIONINFO to the release build: ProductName `LangTint`, ProductVersion/FileVersion matching the release, OriginalFilename matching the executable. **The historical v1.5.3 binary does not establish this prerequisite.** The template fails when metadata is missing; do not weaken that guard.
 - Review a supported Go toolchain before production signing, without changing runtime behavior unnoticed.

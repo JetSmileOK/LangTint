@@ -24,7 +24,7 @@ def config(root: Path = ROOT) -> dict:
         raise ValueError('Unsafe executable name')
     if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', value['go_version']):
         raise ValueError('Pin an exact Go toolchain version')
-    if value['build_id'] != (root / 'BUILD_ID.txt').read_text().strip():
+    if value['build_id'] != (root / 'packaging/BUILD_ID.txt').read_text().strip():
         raise ValueError('Build ID mismatch')
     return value
 
@@ -43,7 +43,7 @@ def verify_source(root: Path = ROOT) -> None:
 
 def assemble(root: Path = ROOT) -> None:
     for name in ('app_windows.go', 'winapi_windows.go'):
-        parts = sorted((root / 'source_fragments').glob(name + '.part*'))
+        parts = sorted((root / 'tools/internal/source_fragments').glob(name + '.part*'))
         if not parts or any(p.is_symlink() for p in parts):
             raise ValueError('Missing or unsafe source fragments: ' + name)
         if [p.name for p in parts] != [f'{name}.part{i:02}' for i in range(1, len(parts)+1)]:
@@ -77,13 +77,22 @@ def stage(binary: Path, output: Path, commit: str, root: Path = ROOT) -> None:
     check_pe(binary)
     output.mkdir(parents=True)
     shutil.copyfile(binary, output / c['exe'])
-    names = [c['exe']+'.manifest', 'RUN_ALL_AND_INSTALL.cmd', 'STATUS.cmd',
-             'UNINSTALL.cmd', 'LICENSE', 'README.md', 'README.ru.md',
-             'PRIVACY.md', 'CODE_SIGNING_POLICY.md', 'THIRD_PARTY_NOTICES.md', 'BUILD_ID.txt']
-    for name in names:
-        p = root / name
+    members = {
+        c['exe']+'.manifest': root/'packaging/windows'/(c['exe']+'.manifest'),
+        'RUN_ALL_AND_INSTALL.cmd': root/'packaging/portable/RUN_ALL_AND_INSTALL.cmd',
+        'STATUS.cmd': root/'packaging/portable/STATUS.cmd',
+        'UNINSTALL.cmd': root/'packaging/portable/UNINSTALL.cmd',
+        'LICENSE': root/'LICENSE',
+        'README.md': root/'README.md',
+        'README.ru.md': root/'README.ru.md',
+        'PRIVACY.md': root/'docs/privacy.md',
+        'CODE_SIGNING_POLICY.md': root/'docs/signing/code-signing-policy.md',
+        'THIRD_PARTY_NOTICES.md': root/'docs/third-party-notices.md',
+        'BUILD_ID.txt': root/'packaging/BUILD_ID.txt',
+    }
+    for name, p in members.items():
         if p.is_symlink() or not p.is_file():
-            raise ValueError('Missing or unsafe package member: ' + name)
+            raise ValueError('Missing or unsafe package member: ' + str(p))
         shutil.copyfile(p, output / name)
     info = {'version': c['version'], 'build_id': c['build_id'], 'commit': commit,
             'go_version': c['go_version'], 'signing': 'unsigned',

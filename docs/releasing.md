@@ -16,7 +16,7 @@ Before publishing the draft, verify source provenance, package checksums, build 
 
 ## Signed release preparation
 
-See `packaging/signpath-workflow.yml.example` and `docs/SIGNPATH_SETUP.md`. This template is intentionally **not an active workflow**. It requires Foundation acceptance, an approved project/policy, trusted-build integration, product/version resources and protected secrets. Do not rename it to `.github/workflows/...` until those requirements and the signature-verification step have been tested. No paid service is provisioned by these files.
+See `packaging/signpath-workflow.yml.example` and `docs/signing/signpath-setup.md`. This template is intentionally **not an active workflow**. It requires Foundation acceptance, an approved project/policy, trusted-build integration, product/version resources and protected secrets. Do not rename it to `.github/workflows/...` until those requirements and the signature-verification step have been tested. No paid service is provisioned by these files.
 
 ## Output and integrity
 

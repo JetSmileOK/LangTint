@@ -1,4 +1,3 @@
-import copy
 import hashlib
 import json
 from pathlib import Path
@@ -38,15 +37,15 @@ class ReleaseTests(unittest.TestCase):
         release.verify_source(self.root)
 
     def test_missing_fragment(self):
-        (self.root/'source_fragments/app_windows.go.part02').unlink()
+        (self.root/'tools/internal/source_fragments/app_windows.go.part02').unlink()
         with self.assertRaises(ValueError): release.assemble(self.root)
 
     def test_tampered_fragment(self):
-        (self.root/'source_fragments/app_windows.go.part01').write_text('corrupt')
+        (self.root/'tools/internal/source_fragments/app_windows.go.part01').write_text('corrupt')
         with self.assertRaises(ValueError): release.assemble(self.root)
 
     def test_extra_fragment(self):
-        (self.root/'source_fragments/app_windows.go.part99').write_text('extra')
+        (self.root/'tools/internal/source_fragments/app_windows.go.part99').write_text('extra')
         with self.assertRaises(ValueError): release.assemble(self.root)
 
     def test_changed_source(self):
@@ -77,7 +76,7 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError): release.config(self.root)
 
     def test_config_rejects_wrong_build(self):
-        (self.root/'BUILD_ID.txt').write_text('wrong')
+        (self.root/'packaging/BUILD_ID.txt').write_text('wrong')
         with self.assertRaises(ValueError): release.config(self.root)
 
     def test_invalid_commit(self):
@@ -88,7 +87,7 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.make_stage()
 
     def test_missing_manifest(self):
-        (self.root/(self.c['exe']+'.manifest')).unlink()
+        (self.root/'packaging/windows'/(self.c['exe']+'.manifest')).unlink()
         with self.assertRaises(ValueError): self.make_stage()
 
     def test_missing_license(self):

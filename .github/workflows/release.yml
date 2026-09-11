@@ -70,7 +70,7 @@ jobs:
             echo 'Unsigned Windows 10 x64 preview.'
             printf 'Built from commit %s.\n' "$GITHUB_SHA"
             echo 'SignPath is not active. Windows may warn about an unknown publisher.'
-            echo 'Read README, compatibility limits, PRIVACY.md and CODE_SIGNING_POLICY.md.'
+            echo 'Read README, compatibility limits, docs/privacy.md and docs/signing/code-signing-policy.md.'
             echo 'Test on a real Windows 10 desktop before promoting this draft.'
           } > release-notes.txt
           gh release create "$REQUESTED_TAG" dist/*.zip dist/SHA256SUMS.txt --target "$GITHUB_SHA" --draft --prerelease --title "LangTint $REQUESTED_TAG - unsigned preview" --notes-file release-notes.txt

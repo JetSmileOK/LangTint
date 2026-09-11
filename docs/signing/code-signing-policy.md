@@ -19,4 +19,4 @@ Repository owner and proposed signing approver: [@JetSmileOK](https://github.com
 5. Recalculate checksums after signing. A signing error must stop the signed release, never silently substitute an unsigned file.
 6. Do not overwrite a published release's assets. Create a new version for a correction.
 
-A signature authenticates publisher/integrity. It does not prove absence of bugs and does not guarantee SmartScreen reputation. See [Privacy](PRIVACY.md), [SignPath setup](docs/SIGNPATH_SETUP.md) and the official [Foundation terms](https://signpath.org/terms.html).
+A signature authenticates publisher/integrity. It does not prove absence of bugs and does not guarantee SmartScreen reputation. See [Privacy](../privacy.md), [SignPath setup](signpath-setup.md) and the official [Foundation terms](https://signpath.org/terms.html).
