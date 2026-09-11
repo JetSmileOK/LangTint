@@ -1,0 +1,33 @@
+{
+  "checks": {
+    "critical_event_functions_identical_to_v1_5_2": true,
+    "policy_exactly_two_entries": true,
+    "ibeam_excluded_by_test": true,
+    "pre_tint_full_cursor_restore": true,
+    "tint_loop_uses_only_policy": true,
+    "acceptance_requires_exactly_two": true,
+    "prior_v152_cleanup_present": true,
+    "prior_v152_cleanup_restores_cursors": true,
+    "startup_restore_preserved": true,
+    "no_mouse_hook": true,
+    "no_periodic_polling": true,
+    "blocking_message_loop_preserved": true,
+    "taskbar_composition_present": true,
+    "old_overlay_api_absent": true,
+    "no_accent_registry_modification": true,
+    "build_id_v153": true,
+    "no_args_never_run": true,
+    "cmd_points_to_v153": true,
+    "cmd_has_no_pause": true,
+    "manifest_v153": true
+  },
+  "critical_functions": {
+    "keyboardProc": true,
+    "winEventProc": true,
+    "controlWndProc": true,
+    "refreshLanguage": true,
+    "applyTint": true,
+    "rebind": true
+  },
+  "pass": true
+}
