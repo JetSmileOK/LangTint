@@ -1,65 +1,91 @@
 # LangTint
 
-### See your keyboard layout before you type.
+**See your keyboard layout before you type.**
 
-A small Windows utility that makes the active layout visible through your **taskbar and mouse pointer** — instead of guessing what you meant after you typed it.
+[![Build](https://github.com/JetSmileOK/colore_of_aungage/actions/workflows/build.yml/badge.svg)](https://github.com/JetSmileOK/colore_of_aungage/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Windows 10 x64](https://img.shields.io/badge/Windows-10%20x64-0078D4.svg)](#compatibility)
 
-[Русский](README.ru.md) · [Downloads](https://github.com/JetSmileOK/colore_of_aungage/releases) · [Builds](https://github.com/JetSmileOK/colore_of_aungage/actions/workflows/build.yml) · [MIT license](LICENSE)
+LangTint is a tiny Windows utility that turns the active keyboard layout into an **ambient visual cue**. Instead of noticing the wrong layout after typing `ghbdtn`, you can see it before the first keystroke.
 
-| Active layout | What you see |
-| --- | --- |
-| English | A light-blue taskbar background and blue Arrow/Hand pointers with a dark outline. |
-| Russian | Your normal taskbar and configured Windows pointers. |
+[Русский](README.ru.md) · [Releases](https://github.com/JetSmileOK/colore_of_aungage/releases) · [Privacy](docs/privacy.md) · [Security](SECURITY.md)
 
-Text-selection and resize pointers stay unchanged. There is **no translucent window covering your taskbar icons**.
+## What you see
 
-## The idea
+| Active layout | Taskbar | Pointer |
+| --- | --- | --- |
+| **English** | light blue `#B7E9FF` | blue **Arrow** and **Hand**, dark outline |
+| **Russian** | normal Windows taskbar | normal Windows cursor scheme |
 
-The tiny ENG/RUS indicator is easy to overlook. LangTint turns a much larger part of the desktop into a cue you can notice with peripheral vision.
+Text-selection, resize, busy and other utility pointers remain unchanged, so they keep their normal contrast. There is **no translucent overlay over taskbar icons**.
 
-**No automatic text correction. No language guessing from what you type. Just a visible layout.**
+## Why this exists
 
-## Download and use
+The tiny `ENG/RUS` indicator is easy to miss. LangTint makes layout state visible through peripheral vision without trying to analyze or rewrite what you type.
 
-Use the ZIP asset on an explicitly published [release](https://github.com/JetSmileOK/colore_of_aungage/releases), not GitHub's “Source code” ZIP. Until a release is published, successful [Actions runs](https://github.com/JetSmileOK/colore_of_aungage/actions/workflows/build.yml) provide preview artifacts; GitHub may require sign-in for those downloads.
+**No automatic text correction. No language guessing. No permanent polling. Just a visible layout.**
 
-Extract the whole package, then run `RUN_ALL_AND_INSTALL.cmd` or double-click `TaskbarLayoutTint_v1_5_3.exe`. Keep its `.manifest` file beside it. The current package installs for the current Windows user and includes `STATUS.cmd` and `UNINSTALL.cmd`.
+## Download
 
-**Current repository baseline: v1.5.3, Windows 10 x64, ordinary Explorer taskbar, RU/EN.** Its installer tests two Alt+Shift changes and therefore expects Alt+Shift and exactly that two-layout cycle. Windows 11, ARM64, custom taskbars and other configurations are not advertised as supported. The separately prepared v1.6 archive is not silently substituted by this release-infrastructure change.
+Use an explicitly published asset from [Releases](https://github.com/JetSmileOK/colore_of_aungage/releases). Successful [CI runs](https://github.com/JetSmileOK/colore_of_aungage/actions/workflows/build.yml) also produce unsigned preview artifacts for testing.
 
-## Signing status
+The current repository baseline is **v1.5.3 for Windows 10 x64**. Public-release hardening and a friendlier installer are being prepared separately; unsupported platforms are not silently advertised as working.
 
-**SignPath integration is prepared, not approved or active. Current builds are unsigned.** Windows may show an unknown-publisher or reputation warning. A checksum checks file integrity; it is not a trusted publisher signature. Do not disable Windows protection to install this utility.
-
-[Code signing policy](CODE_SIGNING_POLICY.md) · [Signing setup](docs/SIGNPATH_SETUP.md)
+Current binaries are **unsigned**, so Windows can show an unknown-publisher / reputation warning. SignPath Foundation integration is prepared but is not claimed as active until the project is actually approved and the resulting signature is verified.
 
 ## Small by design
 
-- Reacts to supported layout-switch shortcuts and foreground-window events; no permanent language polling.
-- Uses a separate visual worker, not taskbar rendering inside the keyboard callback.
-- Uses native taskbar composition, not an overlay.
-- Does not read clipboard contents, save typed text or include application telemetry/network code. See [Privacy](PRIVACY.md).
+- Event-driven layout-switch and foreground-window handling.
+- Direct taskbar composition — no overlay window.
+- Visual work runs outside the keyboard callback.
+- No permanent layout polling.
+- No mouse hook.
+- No application telemetry or network client code.
+- Does not save typed text or read clipboard contents.
 
-“Event-driven” does not mean zero work: the keyboard callback receives keyboard events, and layout reads/visual changes cost time. Performance is machine-dependent; the installer includes a short CPU check, not a battery-life guarantee.
+The keyboard callback still receives Windows keyboard events; “event-driven” does **not** mean literally zero CPU work. See [Privacy](docs/privacy.md) for the exact scope.
 
-## Build and verification
+## Compatibility
 
-The release baseline is pinned to Go 1.23.2 to preserve the previously published build environment. This is a historical toolchain, not a claim that it is current; a supported-toolchain upgrade is a separate pre-production review item.
+Currently advertised and tested as a baseline for:
+
+- Windows 10 x64;
+- standard Explorer taskbar;
+- RU/EN configuration described by the current release.
+
+Windows 11, ARM64 and custom taskbars are not advertised as supported until they receive explicit real-machine validation.
+
+## Build from source
+
+The project source lives under [`source/`](source/). Two large Win32 files are reconstructed deterministically from byte-exact fragments kept under `tools/internal/` before testing and building.
 
 ```sh
-python tools/release.py assemble
 cd source
 go test ./...
-go vet ./...
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./...
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-H=windowsgui -s -w" -o ../TaskbarLayoutTint_v1_5_3.exe .
 ```
 
-The two larger files remain in the repository's existing `source_fragments/` layout. Assembly verifies every Go file against a reviewed SHA-256 manifest; missing, changed or extra source files stop packaging. See [Release process](docs/RELEASING.md).
+Release packaging additionally verifies the exact reviewed source manifest and package contents. See [Release engineering](docs/releasing.md).
 
-CI checks source integrity, packaging tests, Go tests and the Windows build. These checks **do not replace interactive Windows testing** of Explorer, cursors, resume or different display setups.
+## Repository layout
 
-## Help improve LangTint
+```text
+source/       application source and tests
+packaging/    release metadata, manifests and portable-package scripts
+tools/        build/release tools; internal fragments are tucked away here
+docs/         privacy, signing and engineering notes
+.github/      CI, issue templates and automation
+```
 
-[Report a compatibility problem](https://github.com/JetSmileOK/colore_of_aungage/issues/new/choose), share your Windows build and configuration, or contribute a small reviewed fix. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Useful feedback matters more than inflated compatibility claims.
+Historical validation reports are kept under `docs/engineering/`, not in the product-facing root.
 
-If LangTint saves you from another `ghbdtn`, a star helps other people find it.
+## Contributing
+
+Bug reports and focused fixes are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first and remove personal data from logs before posting them.
+
+If LangTint saves you from another `ghbdtn`, a ⭐ helps other people discover it.
+
+---
+
+Created by **[JetSmileOK](https://github.com/JetSmileOK)** · [MIT License](LICENSE)

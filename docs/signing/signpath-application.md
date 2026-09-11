@@ -6,7 +6,7 @@ This is a draft for the owner to review and submit. It has not been sent.
 
 **Repository:** https://github.com/JetSmileOK/colore_of_aungage
 
-**License:** MIT. Runtime is Go; no third-party Go modules are declared. Go's runtime/standard-library license is included in `THIRD_PARTY_NOTICES.md`.
+**License:** MIT. Runtime is Go; no third-party Go modules are declared. Go's runtime/standard-library license is included in `docs/third-party-notices.md`.
 
 **Maintainer / proposed signing approver:** GitHub @JetSmileOK. MFA and role assignment require owner confirmation.
 

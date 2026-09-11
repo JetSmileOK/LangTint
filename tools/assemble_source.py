@@ -1,8 +1,8 @@
 from pathlib import Path
 
-root = Path(__file__).resolve().parent
+root = Path(__file__).resolve().parents[1]
 src = root / "source"
-fragments = root / "source_fragments"
+fragments = root / "tools" / "internal" / "source_fragments"
 
 for name in ("app_windows.go", "winapi_windows.go"):
     parts = sorted(fragments.glob(f"{name}.part*"))
