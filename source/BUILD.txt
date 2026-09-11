@@ -1,0 +1,8 @@
+TaskbarLayoutTint v1.5.3 source build
+
+Release command:
+  GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-H=windowsgui -s -w" -o TaskbarLayoutTint_v1_5_3.exe .
+
+No third-party Go modules.
+Cursor policy: only OCR_NORMAL (Arrow) and OCR_HAND (Hand) are tinted.
+All other system cursor roles remain in the user's Windows scheme.
