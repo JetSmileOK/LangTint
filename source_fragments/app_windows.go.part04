@@ -1,0 +1,250 @@
+	}
+	finish := func(pass bool, err error) error {
+		if pass {
+			lines = append(lines, "SELF_TEST=PASS")
+		} else {
+			lines = append(lines, "SELF_TEST=FAIL")
+			if err != nil {
+				lines = append(lines, "ERROR="+err.Error())
+			}
+		}
+		_ = writeReport(reportPath, lines)
+		return err
+	}
+
+	r, err := setupRuntime(true, "")
+	if err != nil {
+		return finish(false, err)
+	}
+	defer r.cleanup()
+
+	initial := r.language
+	lines = append(lines,
+		"INITIAL_LANGUAGE="+initial.String(),
+		"KEYBOARD_HOOK=PASS",
+		"FOREGROUND_EVENT_HOOK=PASS",
+		fmt.Sprintf("TASKBARS_FOUND=%d", len(enumerateTaskbars())),
+	)
+
+	lines = append(lines,
+		"TASKBAR_COMPOSITION_WORKER=PASS",
+		"TINT_RENDER_MODE=OPAQUE_TASKBAR_COMPOSITION",
+		"CURSOR_RENDER_MODE=TINTED_ARROW_AND_HAND_ONLY",
+		"OVERLAY_WINDOW=NONE",
+	)
+
+	injectResult := make(chan error, 1)
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		if err := sendAltShiftOnce(); err != nil {
+			injectResult <- err
+			postMessage(r.control, wmClose, 0, 0)
+			return
+		}
+		time.Sleep(700 * time.Millisecond)
+		if err := sendAltShiftOnce(); err != nil {
+			injectResult <- err
+			postMessage(r.control, wmClose, 0, 0)
+			return
+		}
+		time.Sleep(700 * time.Millisecond)
+		injectResult <- nil
+		postMessage(r.control, wmClose, 0, 0)
+	}()
+
+	if err := messageLoop(); err != nil {
+		return finish(false, err)
+	}
+	if err := <-injectResult; err != nil {
+		return finish(false, err)
+	}
+	if r.visualWorker != nil {
+		r.visualWorker.barrier()
+	}
+
+	hotkeys := atomic.LoadUint64(&r.hotkeyEvents)
+	checks := atomic.LoadUint64(&r.layoutChecks)
+	transitions := atomic.LoadUint64(&r.transitions)
+	lines = append(lines,
+		fmt.Sprintf("HOTKEY_EVENTS=%d", hotkeys),
+		fmt.Sprintf("LAYOUT_CHECKS=%d", checks),
+		fmt.Sprintf("LANGUAGE_TRANSITIONS=%d", transitions),
+		fmt.Sprintf("MSAA_FALLBACKS=%d", atomic.LoadUint64(&r.msaaFallbacks)),
+		"SEEN_EN="+yesNo(r.seenEN),
+		"SEEN_RU="+yesNo(r.seenRU),
+		"FINAL_LANGUAGE="+r.language.String(),
+	)
+	if r.visualWorker != nil {
+		lines = append(lines,
+			fmt.Sprintf("VISUAL_WORKER_COMMANDS=%d", atomic.LoadUint64(&r.visualWorker.commands)),
+			fmt.Sprintf("COMPOSITION_SET_CALLS=%d", atomic.LoadUint64(&r.visualWorker.setCalls)),
+			fmt.Sprintf("COMPOSITION_RESTORE_CALLS=%d", atomic.LoadUint64(&r.visualWorker.restoreCalls)),
+			fmt.Sprintf("COMPOSITION_WORKER_FAILURES=%d", atomic.LoadUint64(&r.visualWorker.failures)),
+			fmt.Sprintf("CURSOR_SET_CALLS=%d", atomic.LoadUint64(&r.visualWorker.cursorSetCalls)),
+			fmt.Sprintf("CURSOR_RESTORE_CALLS=%d", atomic.LoadUint64(&r.visualWorker.cursorRestoreCalls)),
+			fmt.Sprintf("CURSOR_OBJECTS_SET=%d", atomic.LoadUint64(&r.visualWorker.cursorObjectsSet)),
+			fmt.Sprintf("CURSOR_WORKER_FAILURES=%d", atomic.LoadUint64(&r.visualWorker.cursorFailures)),
+			fmt.Sprintf("VISUAL_REQUESTS_SUPPRESSED=%d", atomic.LoadUint64(&r.visualSuppressed)),
+		)
+	}
+
+	if hotkeys < 2 {
+		return finish(false, fmt.Errorf("keyboard hook saw %d Alt+Shift shortcuts, want >=2", hotkeys))
+	}
+	if checks < 2 {
+		return finish(false, fmt.Errorf("layout checks=%d, want >=2", checks))
+	}
+	if transitions < 2 {
+		return finish(false, fmt.Errorf("Alt+Shift did not produce two language transitions; got %d", transitions))
+	}
+	if !r.seenEN || !r.seenRU {
+		return finish(false, errors.New("test did not observe both EN and RU"))
+	}
+	if r.language != initial {
+		return finish(false, fmt.Errorf("final language=%s differs from initial=%s", r.language, initial))
+	}
+	if r.visualWorker == nil {
+		return finish(false, errors.New("visual worker is missing"))
+	}
+	if failures := atomic.LoadUint64(&r.visualWorker.failures); failures != 0 {
+		return finish(false, fmt.Errorf("visual worker failures=%d", failures))
+	}
+	if atomic.LoadUint64(&r.visualWorker.setCalls) == 0 {
+		return finish(false, errors.New("no composition tint call observed"))
+	}
+	if atomic.LoadUint64(&r.visualWorker.restoreCalls) == 0 {
+		return finish(false, errors.New("no composition restore call observed"))
+	}
+	if cursorFailures := atomic.LoadUint64(&r.visualWorker.cursorFailures); cursorFailures != 0 {
+		return finish(false, fmt.Errorf("cursor worker failures=%d", cursorFailures))
+	}
+	if atomic.LoadUint64(&r.visualWorker.cursorSetCalls) == 0 {
+		return finish(false, errors.New("no tinted cursor set call observed"))
+	}
+	if atomic.LoadUint64(&r.visualWorker.cursorRestoreCalls) == 0 {
+		return finish(false, errors.New("no cursor restore call observed"))
+	}
+	if atomic.LoadUint64(&r.visualWorker.cursorObjectsSet) != uint64(len(tintedSystemCursorIDs)) {
+		return finish(false, fmt.Errorf("tinted cursor object count=%d; want exactly %d (Arrow + Hand)", atomic.LoadUint64(&r.visualWorker.cursorObjectsSet), len(tintedSystemCursorIDs)))
+	}
+	if err := restoreSystemCursors(); err != nil {
+		return finish(false, fmt.Errorf("post-test cursor restore failed: %w", err))
+	}
+	lines = append(lines, "CURSOR_POST_TEST_RESTORE=PASS")
+
+	lines = append(lines,
+		"ALT_SHIFT_EVENT_PATH=PASS",
+		"LANGUAGE_CHANGE_AND_RESTORE=PASS",
+		"TASKBAR_COMPOSITION_EVENT_PATH=PASS",
+		"SYSTEM_CURSOR_EVENT_PATH=PASS",
+		"SYSTEM_THEME_REGISTRY_TOUCHED=NO",
+	)
+	return finish(true, nil)
+}
+
+func idleCPUTest(reportPath string, seconds int) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if seconds < 10 {
+		seconds = 10
+	}
+	lines := []string{
+		"TaskbarLayoutTintHotkey IDLE CPU TEST",
+		"BUILD_ID=" + buildID,
+		fmt.Sprintf("DURATION_SECONDS=%d", seconds),
+		"Visual backend: dedicated taskbar+cursor worker; actual installed runtime path",
+		"Permanent polling: ZERO",
+	}
+
+	r, err := setupRuntime(true, "")
+	if err != nil {
+		lines = append(lines, "IDLE_CPU_TEST=FAIL", "ERROR="+err.Error())
+		_ = writeReport(reportPath, lines)
+		return err
+	}
+	defer r.cleanup()
+
+	startCPU, err := processCPU100ns()
+	if err != nil {
+		return err
+	}
+	startWall := time.Now()
+	if err := setTimer(r.control, timerStop, uint32(seconds*1000)); err != nil {
+		return err
+	}
+	if err := messageLoop(); err != nil {
+		return err
+	}
+	endCPU, err := processCPU100ns()
+	if err != nil {
+		return err
+	}
+	wall := time.Since(startWall)
+	cpuSeconds := float64(endCPU-startCPU) / 10_000_000.0
+	oneCorePct := 0.0
+	if wall > 0 {
+		oneCorePct = cpuSeconds / wall.Seconds() * 100.0
+	}
+	lines = append(lines,
+		fmt.Sprintf("CPU_SECONDS=%.6f", cpuSeconds),
+		fmt.Sprintf("WALL_SECONDS=%.3f", wall.Seconds()),
+		fmt.Sprintf("CPU_ONE_CORE_PERCENT=%.4f", oneCorePct),
+		fmt.Sprintf("HOTKEY_EVENTS=%d", atomic.LoadUint64(&r.hotkeyEvents)),
+		fmt.Sprintf("FOREGROUND_EVENTS=%d", atomic.LoadUint64(&r.foregroundEvents)),
+		fmt.Sprintf("LAYOUT_CHECKS=%d", atomic.LoadUint64(&r.layoutChecks)),
+		fmt.Sprintf("VISUAL_REQUESTS_SUPPRESSED=%d", atomic.LoadUint64(&r.visualSuppressed)),
+	)
+	if r.visualWorker != nil {
+		lines = append(lines,
+			fmt.Sprintf("VISUAL_WORKER_COMMANDS=%d", atomic.LoadUint64(&r.visualWorker.commands)),
+			fmt.Sprintf("COMPOSITION_SET_CALLS=%d", atomic.LoadUint64(&r.visualWorker.setCalls)),
+			fmt.Sprintf("COMPOSITION_RESTORE_CALLS=%d", atomic.LoadUint64(&r.visualWorker.restoreCalls)),
+			fmt.Sprintf("CURSOR_SET_CALLS=%d", atomic.LoadUint64(&r.visualWorker.cursorSetCalls)),
+			fmt.Sprintf("CURSOR_RESTORE_CALLS=%d", atomic.LoadUint64(&r.visualWorker.cursorRestoreCalls)),
+			fmt.Sprintf("CURSOR_OBJECTS_SET=%d", atomic.LoadUint64(&r.visualWorker.cursorObjectsSet)),
+			fmt.Sprintf("CURSOR_WORKER_FAILURES=%d", atomic.LoadUint64(&r.visualWorker.cursorFailures)),
+		)
+	}
+	if oneCorePct > 0.50 {
+		err := fmt.Errorf("idle CPU %.4f%% exceeds 0.50%% of one core", oneCorePct)
+		lines = append(lines, "IDLE_CPU_TEST=FAIL", "ERROR="+err.Error())
+		_ = writeReport(reportPath, lines)
+		return err
+	}
+	lines = append(lines, "IDLE_CPU_TEST=PASS")
+	return writeReport(reportPath, lines)
+}
+
+func yesNo(v bool) string {
+	if v {
+		return "YES"
+	}
+	return "NO"
+}
+
+func cleanupLegacyPollingVersion() {
+	_ = deleteRunValue(legacyRunName)
+	// Native v1 used a named stop event. Signaling it is harmless if absent.
+	const eventModifyState = 0x0002
+	if h := openNamedEvent(legacyStopName, eventModifyState); h != 0 {
+		setEvent(h)
+		closeHandle(h)
+		time.Sleep(150 * time.Millisecond)
+	}
+	if base := os.Getenv("LOCALAPPDATA"); base != "" {
+		_ = os.RemoveAll(filepath.Join(base, legacyInstallFolder))
+	}
+}
+
+// cleanupPriorHotkeyFamily removes stale installed builds from
+// the v1.0-v1.5 family. Those versions intentionally shared one window class,
+// Run value and install directory, which made it possible to accidentally keep
+// executing an older watcher. Versioned builds remove the old family before
+// acceptance testing.
+func cleanupPriorHotkeyFamily(timeout time.Duration) error {
+	_ = deleteRunValue(priorHotkeyRunName)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		hwnd := findWindow(priorHotkeyControlClass)
+		if hwnd == 0 {

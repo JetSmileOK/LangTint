@@ -1,0 +1,250 @@
+//go:build windows
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"runtime"
+	"syscall"
+	"unsafe"
+)
+
+type winPoint struct {
+	X, Y int32
+}
+
+type winMsg struct {
+	Hwnd     uintptr
+	Message  uint32
+	WParam   uintptr
+	LParam   uintptr
+	Time     uint32
+	Pt       winPoint
+	LPrivate uint32
+}
+
+type wndClassEx struct {
+	CbSize        uint32
+	Style         uint32
+	LpfnWndProc   uintptr
+	CbClsExtra    int32
+	CbWndExtra    int32
+	HInstance     uintptr
+	HIcon         uintptr
+	HCursor       uintptr
+	HbrBackground uintptr
+	LpszMenuName  *uint16
+	LpszClassName *uint16
+	HIconSm       uintptr
+}
+
+type highContrast struct {
+	CbSize           uint32
+	DwFlags          uint32
+	DefaultSchemePtr uintptr
+}
+
+type guid struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
+}
+
+type variant struct {
+	VT        uint16
+	Reserved1 uint16
+	Reserved2 uint16
+	Reserved3 uint16
+	Val       int64
+}
+
+type filetime struct {
+	LowDateTime  uint32
+	HighDateTime uint32
+}
+
+type inputRecord struct {
+	Type uint32
+	Pad  uint32
+	Data [32]byte
+}
+
+type keyboardInput struct {
+	Vk        uint16
+	Scan      uint16
+	Flags     uint32
+	Time      uint32
+	ExtraInfo uintptr
+}
+
+// ACCENT_POLICY / WINDOWCOMPOSITIONATTRIBDATA are the structures used by
+// SetWindowCompositionAttribute for the Windows 10 taskbar composition surface.
+type accentPolicy struct {
+	AccentState   int32
+	AccentFlags   uint32
+	GradientColor uint32
+	AnimationID   int32
+}
+
+type windowCompositionAttribData struct {
+	Attrib  int32
+	Padding uint32
+	Data    uintptr
+	Size    uintptr
+}
+
+var iidIAccessible = guid{
+	Data1: 0x618736E0,
+	Data2: 0x3C3D,
+	Data3: 0x11CF,
+	Data4: [8]byte{0x81, 0x0C, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71},
+}
+
+const (
+	objIDClient = 0xFFFFFFFC
+	vtI4        = 3
+
+	wsPopup = 0x80000000
+
+	wsExToolWindow = 0x00000080
+	wsExNoActivate = 0x08000000
+
+	wmDestroy               = 0x0002
+	wmClose                 = 0x0010
+	wmSettingChange         = 0x001A
+	wmDisplayChange         = 0x007E
+	wmTimer                 = 0x0113
+	wmPowerBroadcast        = 0x0218
+	wmThemeChanged          = 0x031A
+	wmDwmCompositionChanged = 0x031E
+	wmKeyDown               = 0x0100
+	wmKeyUp                 = 0x0101
+	wmSysKeyDown            = 0x0104
+	wmSysKeyUp              = 0x0105
+	wmApp                   = 0x8000
+
+	spiGetHighContrast = 0x0042
+	hcfHighContrastOn  = 0x00000001
+
+	whKeyboardLL = 13
+	hcAction     = 0
+
+	eventSystemForeground  = 0x0003
+	wineventOutOfContext   = 0x0000
+	wineventSkipOwnProcess = 0x0002
+
+	pbtApmResumeSuspend   = 0x0007
+	pbtApmResumeAutomatic = 0x0012
+
+	wcaAccentPolicy      = 19
+	accentEnableGradient = 1 // Opaque colored taskbar surface.
+	accentFlagsDefault   = 2
+
+	smtoAbortIfHung = 0x0002
+	smtoBlock       = 0x0001
+
+	inputKeyboard  = 1
+	keyeventfKeyup = 0x0002
+
+	errorAlreadyExists = 183
+	errorFileNotFound  = 2
+
+	keySetValue = 0x0002
+	regSZ       = 1
+)
+
+var (
+	user32   = syscall.NewLazyDLL("user32.dll")
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	ole32    = syscall.NewLazyDLL("ole32.dll")
+	oleacc   = syscall.NewLazyDLL("oleacc.dll")
+	oleaut32 = syscall.NewLazyDLL("oleaut32.dll")
+	advapi32 = syscall.NewLazyDLL("advapi32.dll")
+	ntdll    = syscall.NewLazyDLL("ntdll.dll")
+
+	procFindWindowW                   = user32.NewProc("FindWindowW")
+	procEnumWindows                   = user32.NewProc("EnumWindows")
+	procEnumChildWindows              = user32.NewProc("EnumChildWindows")
+	procGetClassNameW                 = user32.NewProc("GetClassNameW")
+	procGetParent                     = user32.NewProc("GetParent")
+	procIsWindow                      = user32.NewProc("IsWindow")
+	procIsWindowVisible               = user32.NewProc("IsWindowVisible")
+	procCreateWindowExW               = user32.NewProc("CreateWindowExW")
+	procDestroyWindow                 = user32.NewProc("DestroyWindow")
+	procRegisterClassExW              = user32.NewProc("RegisterClassExW")
+	procUnregisterClassW              = user32.NewProc("UnregisterClassW")
+	procDefWindowProcW                = user32.NewProc("DefWindowProcW")
+	procRegisterWindowMessageW        = user32.NewProc("RegisterWindowMessageW")
+	procSetTimer                      = user32.NewProc("SetTimer")
+	procKillTimer                     = user32.NewProc("KillTimer")
+	procGetMessageW                   = user32.NewProc("GetMessageW")
+	procTranslateMessage              = user32.NewProc("TranslateMessage")
+	procDispatchMessageW              = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage               = user32.NewProc("PostQuitMessage")
+	procPostMessageW                  = user32.NewProc("PostMessageW")
+	procGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
+	procGetWindowThreadProcessId      = user32.NewProc("GetWindowThreadProcessId")
+	procGetKeyboardLayout             = user32.NewProc("GetKeyboardLayout")
+	procSetWindowsHookExW             = user32.NewProc("SetWindowsHookExW")
+	procCallNextHookEx                = user32.NewProc("CallNextHookEx")
+	procUnhookWindowsHookEx           = user32.NewProc("UnhookWindowsHookEx")
+	procSetWinEventHook               = user32.NewProc("SetWinEventHook")
+	procUnhookWinEvent                = user32.NewProc("UnhookWinEvent")
+	procSendInput                     = user32.NewProc("SendInput")
+	procSystemParametersInfoW         = user32.NewProc("SystemParametersInfoW")
+	procMessageBoxW                   = user32.NewProc("MessageBoxW")
+	procSetWindowCompositionAttribute = user32.NewProc("SetWindowCompositionAttribute")
+	procSendMessageTimeoutW           = user32.NewProc("SendMessageTimeoutW")
+
+	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
+	procCreateEventW        = kernel32.NewProc("CreateEventW")
+	procOpenEventW          = kernel32.NewProc("OpenEventW")
+	procSetEvent            = kernel32.NewProc("SetEvent")
+	procCloseHandle         = kernel32.NewProc("CloseHandle")
+	procWaitForSingleObject = kernel32.NewProc("WaitForSingleObject")
+	procCreateMutexW        = kernel32.NewProc("CreateMutexW")
+	procOpenMutexW          = kernel32.NewProc("OpenMutexW")
+	procReleaseMutex        = kernel32.NewProc("ReleaseMutex")
+	procGetCurrentProcess   = kernel32.NewProc("GetCurrentProcess")
+	procGetProcessTimes     = kernel32.NewProc("GetProcessTimes")
+
+	procOleInitialize   = ole32.NewProc("OleInitialize")
+	procOleUninitialize = ole32.NewProc("OleUninitialize")
+
+	procAccessibleObjectFromWindow = oleacc.NewProc("AccessibleObjectFromWindow")
+	procSysStringLen               = oleaut32.NewProc("SysStringLen")
+	procSysFreeString              = oleaut32.NewProc("SysFreeString")
+
+	procRegSetValueExW  = advapi32.NewProc("RegSetValueExW")
+	procRegDeleteValueW = advapi32.NewProc("RegDeleteValueW")
+
+	procRtlMoveMemory = ntdll.NewProc("RtlMoveMemory")
+)
+
+func utf16Ptr(s string) *uint16 {
+	p, err := syscall.UTF16PtrFromString(s)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+func boolCall(r uintptr, name string, callErr error) error {
+	if r != 0 {
+		return nil
+	}
+	if callErr != nil && callErr != syscall.Errno(0) {
+		return fmt.Errorf("%s: %w", name, callErr)
+	}
+	return fmt.Errorf("%s failed", name)
+}
+
+func validateWindowsABI() error {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		return fmt.Errorf("unsupported pointer size: %d; Windows x64 required", unsafe.Sizeof(uintptr(0)))
+	}
+	if unsafe.Sizeof(inputRecord{}) != 40 {
+		return fmt.Errorf("INPUT ABI size=%d, want 40", unsafe.Sizeof(inputRecord{}))
+	}

@@ -1,0 +1,250 @@
+		return finish("FAIL", fmt.Errorf("copy manifest: %w", err))
+	}
+
+	runCmd := fmt.Sprintf(`"%s" --run`, dstExe)
+	if err := setRunValue(appName, runCmd); err != nil {
+		_ = os.RemoveAll(dir)
+		return finish("FAIL", err)
+	}
+	if err := startInstalled(dstExe); err != nil {
+		_ = deleteRunValue(appName)
+		_ = os.RemoveAll(dir)
+		return finish("FAIL", fmt.Errorf("start watcher: %w", err))
+	}
+	if err := waitReady(8 * time.Second); err != nil {
+		stopRunning(2 * time.Second)
+		_ = deleteRunValue(appName)
+		_ = os.RemoveAll(dir)
+		return finish("FAIL_ROLLED_BACK", err)
+	}
+	lines = append(lines,
+		"AUTOSTART=PASS",
+		"WATCHER_READY=PASS",
+		"ALT_SHIFT_EVENT=WH_KEYBOARD_LL",
+		"FOREGROUND_EVENT=EVENT_SYSTEM_FOREGROUND",
+		"PERMANENT_POLLING=ZERO",
+		"VISUAL_METHOD=TASKBAR_COMPOSITION_PLUS_SYSTEM_CURSOR_TINT",
+		"RU=normal taskbar + configured Windows cursor scheme",
+		"EN=opaque pale-blue taskbar background + pale-blue Arrow/Hand with dark contour; I-Beam stays normal",
+	)
+	return finish("PASS", nil)
+}
+
+func uninstall(reportPath string) error {
+	_ = cleanupAllPriorVersions()
+	_ = deleteRunValue(appName)
+	stopRunning(4 * time.Second)
+	cursorRestoreErr := restoreSystemCursors()
+	dir, _, _, _, pathErr := installedPaths()
+	if pathErr == nil {
+		_ = os.RemoveAll(dir)
+	}
+	result := "PASS"
+	if cursorRestoreErr != nil {
+		result = "FAIL"
+	}
+	lines := []string{
+		"TaskbarLayoutTintHotkey UNINSTALL REPORT",
+		"BUILD_ID=" + buildID,
+		"AUTOSTART_REMOVED=YES",
+		"WATCHER_STOPPED=" + fmt.Sprintf("%v", findWindow(controlClassName) == 0),
+		"SYSTEM_THEME_REGISTRY_TOUCHED=NO",
+		"SYSTEM_CURSORS_RESTORED=" + yesNo(cursorRestoreErr == nil),
+		"RESULT=" + result,
+	}
+	_ = writeReport(reportPath, lines)
+	if cursorRestoreErr != nil {
+		return cursorRestoreErr
+	}
+	return nil
+}
+
+func status(reportPath string) error {
+	dir, exe, manifest, _, err := installedPaths()
+	if err != nil {
+		return err
+	}
+	_, exeErr := os.Stat(exe)
+	_, manifestErr := os.Stat(manifest)
+	running := findWindow(controlClassName) != 0 && isMutexPresent(mutexName)
+	ok := exeErr == nil && manifestErr == nil && running
+	lines := []string{
+		"TaskbarLayoutTintHotkey STATUS",
+		"BUILD_ID=" + buildID,
+		"INSTALL_DIR=" + dir,
+		"EXE_PRESENT=" + fmt.Sprintf("%v", exeErr == nil),
+		"MANIFEST_PRESENT=" + fmt.Sprintf("%v", manifestErr == nil),
+		"WATCHER_RUNNING=" + fmt.Sprintf("%v", running),
+		"PERMANENT_POLLING=ZERO",
+	}
+	if ok {
+		lines = append(lines, "STATUS=PASS")
+	} else {
+		lines = append(lines, "STATUS=FAIL")
+	}
+	_ = writeReport(reportPath, lines)
+	if !ok {
+		return errors.New("status failed")
+	}
+	return nil
+}
+
+func appendReportFile(lines []string, heading, path string) []string {
+	lines = append(lines, "", "===== "+heading+" =====")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return append(lines, "REPORT_READ_ERROR="+err.Error())
+	}
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return append(lines, "(empty report)")
+	}
+	return append(lines, strings.Split(text, "\n")...)
+}
+
+func acceptAndInstall(reportPath string) error {
+	if reportPath == "" {
+		return errors.New("--accept-install requires --report")
+	}
+
+	lines := []string{
+		"TaskbarLayoutTintHotkey COMPOSITION + CURSOR ONE-CLICK ACCEPTANCE REPORT",
+		"BUILD_ID=" + buildID,
+		"Started: " + time.Now().Format(time.RFC3339),
+		"Architecture: event-driven hooks + dedicated taskbar/cursor visual worker",
+		"Layout read: foreground thread GetKeyboardLayout; MSAA only as event-time fallback",
+		"Permanent polling: ZERO",
+		"Windows theme/accent registry modifications: NONE",
+	}
+	finish := func(result, step string, err error) error {
+		lines = append(lines, "")
+		lines = append(lines, "============================================================")
+		lines = append(lines, "FINAL_RESULT="+result)
+		if step != "" {
+			lines = append(lines, "FAILED_STEP="+step)
+		}
+		if err != nil {
+			lines = append(lines, "ERROR="+err.Error())
+		}
+		lines = append(lines, "PERMANENT_POLLING=ZERO")
+		lines = append(lines, "SYSTEM_THEME_REGISTRY_TOUCHED=NO")
+		lines = append(lines, "============================================================")
+		_ = writeReport(reportPath, lines)
+		return err
+	}
+
+	// Make the run deterministic and remove all predecessor watchers first.
+	if err := cleanupAllPriorVersions(); err != nil {
+		return finish("FAIL", "PRIOR_VERSION_CLEANUP", err)
+	}
+	_ = deleteRunValue(appName)
+	stopRunning(2 * time.Second)
+
+	tmpDir, err := os.MkdirTemp("", "TaskbarLayoutTint-accept-")
+	if err != nil {
+		return finish("FAIL", "TEMP_DIR", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	selfReport := filepath.Join(tmpDir, "self.txt")
+	idleReport := filepath.Join(tmpDir, "idle.txt")
+	installReport := filepath.Join(tmpDir, "install.txt")
+	statusReport := filepath.Join(tmpDir, "status.txt")
+	rollbackReport := filepath.Join(tmpDir, "rollback.txt")
+
+	if err := eventSelfTest(selfReport); err != nil {
+		lines = appendReportFile(lines, "1 EVENT SELF TEST", selfReport)
+		return finish("FAIL", "EVENT_SELF_TEST", err)
+	}
+	lines = appendReportFile(lines, "1 EVENT SELF TEST", selfReport)
+
+	if err := idleCPUTest(idleReport, 10); err != nil {
+		lines = appendReportFile(lines, "2 IDLE CPU TEST", idleReport)
+		return finish("FAIL", "IDLE_CPU_TEST", err)
+	}
+	lines = appendReportFile(lines, "2 IDLE CPU TEST", idleReport)
+
+	if err := install(installReport); err != nil {
+		lines = appendReportFile(lines, "3 INSTALL", installReport)
+		_ = uninstall(rollbackReport)
+		lines = appendReportFile(lines, "ROLLBACK", rollbackReport)
+		return finish("FAIL", "INSTALL", err)
+	}
+	lines = appendReportFile(lines, "3 INSTALL", installReport)
+
+	if err := status(statusReport); err != nil {
+		lines = appendReportFile(lines, "4 STATUS", statusReport)
+		_ = uninstall(rollbackReport)
+		lines = appendReportFile(lines, "ROLLBACK", rollbackReport)
+		return finish("FAIL", "STATUS", err)
+	}
+	lines = appendReportFile(lines, "4 STATUS", statusReport)
+
+	lines = append(lines,
+		"",
+		"BUILD_ID_CONFIRMED="+buildID,
+		"ALL_ACCEPTANCE_GATES=PASS",
+		"INSTALL=PASS",
+		"STATUS=PASS",
+		"HOTKEY_EVENT=WH_KEYBOARD_LL",
+		"FOREGROUND_EVENT=EVENT_SYSTEM_FOREGROUND",
+		"LAYOUT_QUERY=GetKeyboardLayout(foreground_thread)",
+		"CURSOR_MODE=ARROW_HAND_TINT_WITH_DARK_CONTOUR",
+		"VISUAL_METHOD=TASKBAR_COMPOSITION_NO_OVERLAY",
+	)
+	return finish("PASS", "", nil)
+}
+
+func parseArgValue(args []string, name string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if strings.EqualFold(args[i], name) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func defaultAcceptanceReport() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join(os.TempDir(), "TaskbarLayoutTint_v1_5_3_REPORT.txt")
+	}
+	return filepath.Join(home, "Downloads", "TaskbarLayoutTint_v1_5_3_REPORT.txt")
+}
+
+func main() {
+	args := os.Args[1:]
+	mode := resolveMode(args)
+	report := parseArgValue(args, "--report")
+	if (mode == "--accept-install" || mode == "--interactive") && report == "" {
+		report = defaultAcceptanceReport()
+	}
+
+	seconds := 10
+	if v := parseArgValue(args, "--seconds"); v != "" {
+		_, _ = fmt.Sscanf(v, "%d", &seconds)
+	}
+
+	var err error
+	switch mode {
+	case "--interactive":
+		showInfoMessage("TaskbarLayoutTint v1.5.3", "Начинаю автоматическую проверку и установку.\n\nЭто займет примерно 10-20 секунд. Фоновый watcher из этой папки запускаться не будет.")
+		err = acceptAndInstall(report)
+		if report != "" {
+			cmd := exec.Command("notepad.exe", report)
+			if startErr := cmd.Start(); startErr == nil {
+				_ = cmd.Process.Release()
+			}
+		}
+		if err != nil {
+			showInfoMessage("TaskbarLayoutTint v1.5.3 - ошибка", "Установка не выполнена. Отчет открыт в Блокноте. Никакой watcher из исходной папки не оставлен запущенным.")
+			os.Exit(1)
+		}
+		showInfoMessage("TaskbarLayoutTint v1.5.3", "Проверки и установка завершены успешно. Отчет открыт в Блокноте. Исходную папку после закрытия этого окна можно удалить.")
+		return
+	case "--accept-install":
+		err = acceptAndInstall(report)
+	case "--self-test":
+		err = eventSelfTest(report)
+	case "--idle-test":

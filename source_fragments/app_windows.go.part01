@@ -1,0 +1,250 @@
+//go:build windows
+
+package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+)
+
+const (
+	buildID       = "TaskbarLayoutTint_COMPOSITION_CURSOR_v1.5.3_20260911"
+	appName       = "TaskbarLayoutTintHotkey_v1_5_3"
+	installFolder = "TaskbarLayoutTintHotkey_v1_5_3"
+	exeName       = "TaskbarLayoutTint_v1_5_3.exe"
+
+	mutexName = `Local\TaskbarLayoutTintHotkey_v1_5_3_Mutex`
+	readyName = `Local\TaskbarLayoutTintHotkey_v1_5_3_Ready`
+
+	// Immediate predecessor family (v1.0-v1.5) shared these identifiers.
+	priorHotkeyRunName       = "TaskbarLayoutTintHotkey"
+	priorHotkeyInstallFolder = "TaskbarLayoutTintHotkey"
+	priorHotkeyControlClass  = "TaskbarLayoutTintHotkeyControl_v1"
+
+	// v1.5.1 had unique identifiers, but a direct double-click with no
+	// arguments incorrectly started --run from the source folder. v1.5.2
+	// must stop that process so the downloaded/extracted files unlock.
+	priorV151RunName       = "TaskbarLayoutTintHotkey_v1_5_1"
+	priorV151InstallFolder = "TaskbarLayoutTintHotkey_v1_5_1"
+	priorV151ControlClass  = "TaskbarLayoutTintHotkeyControl_v1_5_1"
+
+	// Immediate predecessor v1.5.2. v1.5.3 must stop it before restoring
+	// the full cursor scheme and installing the two-cursor policy.
+	priorV152RunName       = "TaskbarLayoutTintHotkey_v1_5_2"
+	priorV152InstallFolder = "TaskbarLayoutTintHotkey_v1_5_2"
+	priorV152ControlClass  = "TaskbarLayoutTintHotkeyControl_v1_5_2"
+
+	// Very early native polling prototype.
+	legacyRunName       = "TaskbarLayoutTintNative"
+	legacyStopName      = `Local\TaskbarLayoutTintNative_v1_Stop`
+	legacyInstallFolder = "TaskbarLayoutTintNative"
+
+	controlClassName = "TaskbarLayoutTintHotkeyControl_v1_5_3"
+
+	wmAppHotkey     = wmApp + 1
+	wmAppForeground = wmApp + 2
+
+	timerLayout = 101
+	timerRebind = 102
+	timerStop   = 103
+
+	layoutDebounceMS = 80
+	rebindDebounceMS = 200
+)
+
+var (
+	activeRuntime *watcherRuntime
+
+	controlWndProcCB = syscall.NewCallback(controlWndProc)
+	keyboardProcCB   = syscall.NewCallback(keyboardProc)
+	winEventProcCB   = syscall.NewCallback(winEventProc)
+)
+
+type taskbarManager struct {
+	windows  map[uintptr]bool
+	accented map[uintptr]bool
+}
+
+func newTaskbarManager() *taskbarManager {
+	return &taskbarManager{
+		windows:  make(map[uintptr]bool),
+		accented: make(map[uintptr]bool),
+	}
+}
+
+func (m *taskbarManager) discover() error {
+	taskbars := enumerateTaskbars()
+	live := make(map[uintptr]bool, len(taskbars))
+	for _, tb := range taskbars {
+		if tb == 0 || !isWindow(tb) {
+			continue
+		}
+		cls := getClassName(tb)
+		if cls != "Shell_TrayWnd" && cls != "Shell_SecondaryTrayWnd" {
+			continue
+		}
+		live[tb] = true
+	}
+	for tb := range m.windows {
+		if !live[tb] {
+			delete(m.windows, tb)
+			delete(m.accented, tb)
+		}
+	}
+	for tb := range live {
+		m.windows[tb] = true
+	}
+	if len(m.windows) == 0 {
+		return errors.New("no usable taskbar windows")
+	}
+	return nil
+}
+
+// apply changes composition only when it is actually required. Normal
+// foreground events with an unchanged EN state do not call DWM again.
+// force is used only after Explorer/taskbar lifecycle changes.
+func (m *taskbarManager) apply(tint, force bool) (setCalls, restoreCalls uint64, firstErr error) {
+	for tb := range m.windows {
+		if !isWindow(tb) {
+			continue
+		}
+		if tint {
+			if m.accented[tb] && !force {
+				continue
+			}
+			setCalls++
+			if err := setTaskbarOpaqueTint(tb, tintRed, tintGreen, tintBlue); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				m.accented[tb] = true
+			}
+			continue
+		}
+		if m.accented[tb] {
+			restoreCalls++
+			if err := restoreTaskbarNormal(tb); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				delete(m.accented, tb)
+			}
+		}
+	}
+	return setCalls, restoreCalls, firstErr
+}
+
+func (m *taskbarManager) close() (restoreCalls uint64) {
+	for tb := range m.accented {
+		if isWindow(tb) {
+			restoreCalls++
+			_ = restoreTaskbarNormal(tb)
+		}
+	}
+	m.windows = make(map[uintptr]bool)
+	m.accented = make(map[uintptr]bool)
+	return restoreCalls
+}
+
+type visualCommand struct {
+	tint    bool
+	force   bool
+	ack     chan error
+	stop    bool
+	barrier bool
+}
+
+type visualWorker struct {
+	manager *taskbarManager
+	queue   chan visualCommand
+	done    chan struct{}
+	owner   *watcherRuntime
+
+	setCalls           uint64
+	restoreCalls       uint64
+	cursorSetCalls     uint64
+	cursorRestoreCalls uint64
+	cursorObjectsSet   uint64
+	commands           uint64
+	failures           uint64
+	cursorFailures     uint64
+}
+
+func newVisualWorker(owner *watcherRuntime, manager *taskbarManager) *visualWorker {
+	w := &visualWorker{
+		manager: manager,
+		queue:   make(chan visualCommand, 1),
+		done:    make(chan struct{}),
+		owner:   owner,
+	}
+	go w.loop()
+	return w
+}
+
+func (w *visualWorker) loop() {
+	defer close(w.done)
+	for cmd := range w.queue {
+		if cmd.barrier {
+			if cmd.ack != nil {
+				cmd.ack <- nil
+			}
+			continue
+		}
+		if cmd.stop {
+			restored := w.manager.close()
+			atomic.AddUint64(&w.restoreCalls, restored)
+			if err := restoreSystemCursors(); err != nil {
+				atomic.AddUint64(&w.cursorFailures, 1)
+				if w.owner != nil {
+					w.owner.logf("CURSOR_RESTORE_ON_STOP_FAIL err=%v", err)
+				}
+			} else {
+				atomic.AddUint64(&w.cursorRestoreCalls, 1)
+			}
+			if cmd.ack != nil {
+				cmd.ack <- nil
+			}
+			return
+		}
+
+		atomic.AddUint64(&w.commands, 1)
+		var err error
+		if cmd.force || len(w.manager.windows) == 0 {
+			err = w.manager.discover()
+		}
+		if err == nil {
+			sets, restores, applyErr := w.manager.apply(cmd.tint, cmd.force)
+			atomic.AddUint64(&w.setCalls, sets)
+			atomic.AddUint64(&w.restoreCalls, restores)
+			err = applyErr
+		}
+		if err == nil {
+			if cmd.tint {
+				count, cursorErr := applyTintedSystemCursors()
+				atomic.AddUint64(&w.cursorObjectsSet, uint64(count))
+				if cursorErr != nil {
+					atomic.AddUint64(&w.cursorFailures, 1)
+					err = cursorErr
+				} else {
+					atomic.AddUint64(&w.cursorSetCalls, 1)
+				}
+			} else {
+				if cursorErr := restoreSystemCursors(); cursorErr != nil {
+					atomic.AddUint64(&w.cursorFailures, 1)
+					err = cursorErr
+				} else {
+					atomic.AddUint64(&w.cursorRestoreCalls, 1)
+				}

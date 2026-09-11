@@ -1,0 +1,21 @@
+		err = idleCPUTest(report, seconds)
+	case "--install":
+		err = install(report)
+	case "--uninstall":
+		err = uninstall(report)
+	case "--status":
+		err = status(report)
+	case "--run":
+		_, _, _, logPath, pathErr := installedPaths()
+		if pathErr != nil {
+			err = pathErr
+		} else {
+			err = runWatcher(logPath)
+		}
+	default:
+		err = fmt.Errorf("invalid command line; resident watcher requires explicit --run")
+	}
+	if err != nil {
+		os.Exit(1)
+	}
+}

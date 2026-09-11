@@ -1,0 +1,55 @@
+func processCPU100ns() (uint64, error) {
+	process, _, _ := procGetCurrentProcess.Call()
+	var creation, exit, kernel, user filetime
+	r, _, e := procGetProcessTimes.Call(
+		process,
+		uintptr(unsafe.Pointer(&creation)),
+		uintptr(unsafe.Pointer(&exit)),
+		uintptr(unsafe.Pointer(&kernel)),
+		uintptr(unsafe.Pointer(&user)),
+	)
+	if r == 0 {
+		return 0, fmt.Errorf("GetProcessTimes: %w", e)
+	}
+	to64 := func(ft filetime) uint64 {
+		return uint64(ft.HighDateTime)<<32 | uint64(ft.LowDateTime)
+	}
+	return to64(kernel) + to64(user), nil
+}
+
+func setRunValue(name, command string) error {
+	var key syscall.Handle
+	sub := utf16Ptr(`Software\Microsoft\Windows\CurrentVersion\Run`)
+	if err := syscall.RegOpenKeyEx(syscall.HKEY_CURRENT_USER, sub, 0, syscall.KEY_SET_VALUE, &key); err != nil {
+		return fmt.Errorf("RegOpenKeyEx Run: %w", err)
+	}
+	defer syscall.RegCloseKey(key)
+
+	value := syscall.StringToUTF16(command)
+	r, _, e := procRegSetValueExW.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(utf16Ptr(name))),
+		0,
+		regSZ,
+		uintptr(unsafe.Pointer(&value[0])),
+		uintptr(len(value)*2),
+	)
+	if r != 0 {
+		return fmt.Errorf("RegSetValueExW code=%d err=%v", r, e)
+	}
+	return nil
+}
+
+func deleteRunValue(name string) error {
+	var key syscall.Handle
+	sub := utf16Ptr(`Software\Microsoft\Windows\CurrentVersion\Run`)
+	if err := syscall.RegOpenKeyEx(syscall.HKEY_CURRENT_USER, sub, 0, syscall.KEY_SET_VALUE, &key); err != nil {
+		return fmt.Errorf("RegOpenKeyEx Run: %w", err)
+	}
+	defer syscall.RegCloseKey(key)
+	r, _, e := procRegDeleteValueW.Call(uintptr(key), uintptr(unsafe.Pointer(utf16Ptr(name))))
+	if r == 0 || uint32(r) == errorFileNotFound {
+		return nil
+	}
+	return fmt.Errorf("RegDeleteValueW code=%d err=%v", r, e)
+}

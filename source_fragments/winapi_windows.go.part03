@@ -1,0 +1,250 @@
+
+func setTimer(hwnd uintptr, id uintptr, ms uint32) error {
+	r, _, e := procSetTimer.Call(hwnd, id, uintptr(ms), 0)
+	if r == 0 {
+		return fmt.Errorf("SetTimer(%d): %w", id, e)
+	}
+	return nil
+}
+
+func killTimer(hwnd uintptr, id uintptr) {
+	procKillTimer.Call(hwnd, id)
+}
+
+func postMessage(hwnd uintptr, msg uint32, wparam, lparam uintptr) bool {
+	r, _, _ := procPostMessageW.Call(hwnd, uintptr(msg), wparam, lparam)
+	return r != 0
+}
+
+func messageLoop() error {
+	var msg winMsg
+	for {
+		r, _, e := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		signed := int32(r)
+		if signed == 0 {
+			return nil
+		}
+		if signed == -1 {
+			return fmt.Errorf("GetMessageW: %w", e)
+		}
+		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+	}
+}
+
+func postQuitMessage(code int32) { procPostQuitMessage.Call(uintptr(uint32(code))) }
+
+func installKeyboardHook(callback uintptr) (uintptr, error) {
+	h, _, e := procSetWindowsHookExW.Call(whKeyboardLL, callback, getModuleHandle(), 0)
+	if h == 0 {
+		return 0, fmt.Errorf("SetWindowsHookExW(WH_KEYBOARD_LL): %w", e)
+	}
+	return h, nil
+}
+
+func callNextKeyboardHook(hook, nCode, wparam, lparam uintptr) uintptr {
+	r, _, _ := procCallNextHookEx.Call(hook, nCode, wparam, lparam)
+	return r
+}
+
+func unhookKeyboard(h uintptr) {
+	if h != 0 {
+		procUnhookWindowsHookEx.Call(h)
+	}
+}
+
+func copyVKCodeFromHook(lparam uintptr) uint32 {
+	var vk uint32
+	procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&vk)), lparam, unsafe.Sizeof(vk))
+	return vk
+}
+
+func installForegroundHook(callback uintptr) (uintptr, error) {
+	h, _, e := procSetWinEventHook.Call(
+		eventSystemForeground,
+		eventSystemForeground,
+		0,
+		callback,
+		0, 0,
+		wineventOutOfContext|wineventSkipOwnProcess,
+	)
+	if h == 0 {
+		return 0, fmt.Errorf("SetWinEventHook(EVENT_SYSTEM_FOREGROUND): %w", e)
+	}
+	return h, nil
+}
+
+func unhookWinEvent(h uintptr) {
+	if h != 0 {
+		procUnhookWinEvent.Call(h)
+	}
+}
+
+func sendKey(vk uint16, up bool) inputRecord {
+	var rec inputRecord
+	rec.Type = inputKeyboard
+	ki := (*keyboardInput)(unsafe.Pointer(&rec.Data[0]))
+	ki.Vk = vk
+	if up {
+		ki.Flags = keyeventfKeyup
+	}
+	return rec
+}
+
+func sendAltShiftOnce() error {
+	inputs := [4]inputRecord{
+		sendKey(vkLMenu, false),
+		sendKey(vkLShift, false),
+		sendKey(vkLShift, true),
+		sendKey(vkLMenu, true),
+	}
+	r, _, e := procSendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		unsafe.Sizeof(inputRecord{}),
+	)
+	if r != uintptr(len(inputs)) {
+		return fmt.Errorf("SendInput inserted %d/%d events: %w", r, len(inputs), e)
+	}
+	return nil
+}
+
+func compositionAPIAvailable() error {
+	if err := procSetWindowCompositionAttribute.Find(); err != nil {
+		return fmt.Errorf("SetWindowCompositionAttribute unavailable: %w", err)
+	}
+	if err := procSendMessageTimeoutW.Find(); err != nil {
+		return fmt.Errorf("SendMessageTimeoutW unavailable: %w", err)
+	}
+	return nil
+}
+
+func setTaskbarOpaqueTint(hwnd uintptr, r, g, b uint8) error {
+	if hwnd == 0 || !isWindow(hwnd) {
+		return errors.New("taskbar HWND is invalid")
+	}
+	cls := getClassName(hwnd)
+	if cls != "Shell_TrayWnd" && cls != "Shell_SecondaryTrayWnd" {
+		return fmt.Errorf("unexpected taskbar class %q", cls)
+	}
+	if err := compositionAPIAvailable(); err != nil {
+		return err
+	}
+	policy := accentPolicy{
+		AccentState:   accentEnableGradient,
+		AccentFlags:   accentFlagsDefault,
+		GradientColor: packABGR(0xFF, r, g, b),
+		AnimationID:   0,
+	}
+	data := windowCompositionAttribData{
+		Attrib: wcaAccentPolicy,
+		Data:   uintptr(unsafe.Pointer(&policy)),
+		Size:   unsafe.Sizeof(policy),
+	}
+	ok, _, callErr := procSetWindowCompositionAttribute.Call(
+		hwnd,
+		uintptr(unsafe.Pointer(&data)),
+	)
+	runtime.KeepAlive(policy)
+	runtime.KeepAlive(data)
+	if ok == 0 {
+		if callErr != nil && callErr != syscall.Errno(0) {
+			return fmt.Errorf("SetWindowCompositionAttribute: %w", callErr)
+		}
+		return errors.New("SetWindowCompositionAttribute returned FALSE")
+	}
+	return nil
+}
+
+func restoreTaskbarNormal(hwnd uintptr) error {
+	if hwnd == 0 || !isWindow(hwnd) {
+		return nil
+	}
+	if err := compositionAPIAvailable(); err != nil {
+		return err
+	}
+	var result uintptr
+	ok, _, callErr := procSendMessageTimeoutW.Call(
+		hwnd,
+		wmDwmCompositionChanged,
+		1,
+		0,
+		smtoAbortIfHung|smtoBlock,
+		250,
+		uintptr(unsafe.Pointer(&result)),
+	)
+	if ok == 0 {
+		if callErr != nil && callErr != syscall.Errno(0) {
+			return fmt.Errorf("SendMessageTimeoutW(WM_DWMCOMPOSITIONCHANGED): %w", callErr)
+		}
+		return errors.New("SendMessageTimeoutW(WM_DWMCOMPOSITIONCHANGED) failed")
+	}
+	return nil
+}
+
+func createNamedEvent(name string, manualReset, initialState bool) (uintptr, bool, error) {
+	manual := uintptr(0)
+	if manualReset {
+		manual = 1
+	}
+	initial := uintptr(0)
+	if initialState {
+		initial = 1
+	}
+	r, _, e := procCreateEventW.Call(0, manual, initial, uintptr(unsafe.Pointer(utf16Ptr(name))))
+	if r == 0 {
+		return 0, false, fmt.Errorf("CreateEventW(%s): %w", name, e)
+	}
+	return r, e == syscall.Errno(errorAlreadyExists), nil
+}
+
+func openNamedEvent(name string, access uint32) uintptr {
+	r, _, _ := procOpenEventW.Call(uintptr(access), 0, uintptr(unsafe.Pointer(utf16Ptr(name))))
+	return r
+}
+
+func setEvent(h uintptr) bool {
+	r, _, _ := procSetEvent.Call(h)
+	return r != 0
+}
+
+func closeHandle(h uintptr) {
+	if h != 0 {
+		procCloseHandle.Call(h)
+	}
+}
+
+func waitForSingleObject(h uintptr, timeoutMS uint32) uint32 {
+	r, _, _ := procWaitForSingleObject.Call(h, uintptr(timeoutMS))
+	return uint32(r)
+}
+
+func createSingleInstanceMutex(name string) (uintptr, bool, error) {
+	r, _, e := procCreateMutexW.Call(0, 1, uintptr(unsafe.Pointer(utf16Ptr(name))))
+	if r == 0 {
+		return 0, false, fmt.Errorf("CreateMutexW: %w", e)
+	}
+	if e == syscall.Errno(errorAlreadyExists) {
+		closeHandle(r)
+		return 0, true, nil
+	}
+	return r, false, nil
+}
+
+func releaseMutex(h uintptr) {
+	if h != 0 {
+		procReleaseMutex.Call(h)
+		closeHandle(h)
+	}
+}
+
+func isMutexPresent(name string) bool {
+	const synchronize = 0x00100000
+	r, _, _ := procOpenMutexW.Call(synchronize, 0, uintptr(unsafe.Pointer(utf16Ptr(name))))
+	if r == 0 {
+		return false
+	}
+	closeHandle(r)
+	return true
+}
+

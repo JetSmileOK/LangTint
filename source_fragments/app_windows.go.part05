@@ -1,0 +1,250 @@
+			break
+		}
+		postMessage(hwnd, wmClose, 0, 0)
+		if time.Now().After(deadline) {
+			return errors.New("previous TaskbarLayoutTintHotkey process did not stop")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Restore user-visible state defensively after the old process is gone.
+	// Overlay versions disappear when their process exits; composition versions
+	// are explicitly told to return the taskbar to the Explorer default.
+	var restoreErr error
+	for _, tb := range enumerateTaskbars() {
+		if err := restoreTaskbarNormal(tb); err != nil && restoreErr == nil {
+			restoreErr = err
+		}
+	}
+	if err := restoreSystemCursors(); err != nil && restoreErr == nil {
+		restoreErr = err
+	}
+
+	if base := os.Getenv("LOCALAPPDATA"); base != "" {
+		if err := os.RemoveAll(filepath.Join(base, priorHotkeyInstallFolder)); err != nil && restoreErr == nil {
+			restoreErr = err
+		}
+	}
+	return restoreErr
+}
+
+func cleanupV151Family(timeout time.Duration) error {
+	_ = deleteRunValue(priorV151RunName)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		hwnd := findWindow(priorV151ControlClass)
+		if hwnd == 0 {
+			break
+		}
+		postMessage(hwnd, wmClose, 0, 0)
+		if time.Now().After(deadline) {
+			return errors.New("previous v1.5.1 process did not stop; source files may remain locked")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if base := os.Getenv("LOCALAPPDATA"); base != "" {
+		if err := os.RemoveAll(filepath.Join(base, priorV151InstallFolder)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cleanupV152Family(timeout time.Duration) error {
+	_ = deleteRunValue(priorV152RunName)
+
+	deadline := time.Now().Add(timeout)
+	for {
+		hwnd := findWindow(priorV152ControlClass)
+		if hwnd == 0 {
+			break
+		}
+		postMessage(hwnd, wmClose, 0, 0)
+		if time.Now().After(deadline) {
+			return errors.New("previous v1.5.2 process did not stop")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// v1.5.2 could have left Arrow/I-Beam/etc. tinted while EN was active.
+	// Restore the complete configured Windows cursor scheme before applying the
+	// narrower v1.5.3 Arrow+Hand-only policy.
+	var restoreErr error
+	for _, tb := range enumerateTaskbars() {
+		if err := restoreTaskbarNormal(tb); err != nil && restoreErr == nil {
+			restoreErr = err
+		}
+	}
+	if err := restoreSystemCursors(); err != nil && restoreErr == nil {
+		restoreErr = err
+	}
+
+	if base := os.Getenv("LOCALAPPDATA"); base != "" {
+		if err := os.RemoveAll(filepath.Join(base, priorV152InstallFolder)); err != nil && restoreErr == nil {
+			restoreErr = err
+		}
+	}
+	return restoreErr
+}
+
+func cleanupAllPriorVersions() error {
+	cleanupLegacyPollingVersion()
+	if err := cleanupPriorHotkeyFamily(4 * time.Second); err != nil {
+		return err
+	}
+	if err := cleanupV151Family(4 * time.Second); err != nil {
+		return err
+	}
+	return cleanupV152Family(4 * time.Second)
+}
+
+func localInstallDir() (string, error) {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		return "", errors.New("LOCALAPPDATA is empty")
+	}
+	return filepath.Join(base, installFolder), nil
+}
+
+func installedPaths() (dir, exe, manifest, log string, err error) {
+	dir, err = localInstallDir()
+	if err != nil {
+		return
+	}
+	exe = filepath.Join(dir, exeName)
+	manifest = exe + ".manifest"
+	log = filepath.Join(dir, "TaskbarLayoutTint.log")
+	return
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	tmp := dst + ".new"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmp)
+		return copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmp)
+		return closeErr
+	}
+	_ = os.Remove(dst)
+	return os.Rename(tmp, dst)
+}
+
+func stopRunning(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		hwnd := findWindow(controlClassName)
+		if hwnd == 0 {
+			return
+		}
+		postMessage(hwnd, wmClose, 0, 0)
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func startInstalled(exe string) error {
+	cmd := exec.Command(exe, "--run")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+func waitReady(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		h := openNamedEvent(readyName, 0x00100000)
+		if h != 0 {
+			res := waitForSingleObject(h, 150)
+			closeHandle(h)
+			if res == 0 {
+				return nil
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return errors.New("READY event not observed")
+}
+
+func writeReport(path string, lines []string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	for _, line := range lines {
+		_, _ = fmt.Fprintln(w, line)
+	}
+	return w.Flush()
+}
+
+func install(reportPath string) error {
+	lines := []string{
+		"TaskbarLayoutTintHotkey INSTALL REPORT",
+		"BUILD_ID=" + buildID,
+		"Started: " + time.Now().Format(time.RFC3339),
+		"Architecture: event-driven hooks + dedicated taskbar/cursor visual worker",
+		"Permanent polling: ZERO",
+		"Windows theme/accent registry modifications: NONE",
+	}
+	finish := func(result string, err error) error {
+		lines = append(lines, "RESULT="+result)
+		if err != nil {
+			lines = append(lines, "ERROR="+err.Error())
+		}
+		_ = writeReport(reportPath, lines)
+		return err
+	}
+
+	if err := cleanupAllPriorVersions(); err != nil {
+		return finish("FAIL", fmt.Errorf("previous-version cleanup: %w", err))
+	}
+	stopRunning(3 * time.Second)
+
+	srcExe, err := os.Executable()
+	if err != nil {
+		return finish("FAIL", err)
+	}
+	srcExe, _ = filepath.Abs(srcExe)
+	srcManifest := srcExe + ".manifest"
+	dir, dstExe, dstManifest, _, err := installedPaths()
+	if err != nil {
+		return finish("FAIL", err)
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return finish("FAIL", err)
+	}
+	if err := copyFile(srcExe, dstExe); err != nil {
+		return finish("FAIL", fmt.Errorf("copy exe: %w", err))
+	}
+	if _, err := os.Stat(srcManifest); err != nil {
+		_ = os.RemoveAll(dir)
+		return finish("FAIL", errors.New("sidecar application manifest missing"))
+	}
+	if err := copyFile(srcManifest, dstManifest); err != nil {
+		_ = os.RemoveAll(dir)

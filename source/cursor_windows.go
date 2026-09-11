@@ -183,7 +183,7 @@ func makeV5Header(width, height int) bitmapV5Header {
 	return bitmapV5Header{
 		Size:        uint32(unsafe.Sizeof(bitmapV5Header{})),
 		Width:       int32(width),
-		Height:      -int32(height),
+		Height:      -int32(height), // top-down DIB
 		Planes:      1,
 		BitCount:    32,
 		Compression: biBitFields,
@@ -322,10 +322,16 @@ func createTintedCursorFromSystemID(id uint32) (uintptr, error) {
 	return created, nil
 }
 
+// applyTintedSystemCursors replaces only the normal Arrow and Hand roles with
+// recoloured copies of the user's current scheme. All text/editing/status cursor
+// roles remain untouched. On any failure it immediately reloads the user's
+// normal cursor scheme so a partial replacement cannot stay.
 func applyTintedSystemCursors() (int, error) {
 	if err := cursorAPIAvailable(); err != nil {
 		return 0, err
 	}
+	// Always source shapes from the user's configured scheme, not from a cursor
+	// that this process may previously have tinted.
 	if err := restoreSystemCursors(); err != nil {
 		return 0, fmt.Errorf("pre-tint cursor restore: %w", err)
 	}
@@ -339,6 +345,7 @@ func applyTintedSystemCursors() (int, error) {
 		}
 		r, _, callErr := procSetSystemCursor.Call(hcur, uintptr(id))
 		if r == 0 {
+			// SetSystemCursor destroys hcur on success only. On failure we own it.
 			procDestroyCursor.Call(hcur)
 			_ = restoreSystemCursors()
 			return setCount, fmt.Errorf("SetSystemCursor(%d): %w", id, callErr)
