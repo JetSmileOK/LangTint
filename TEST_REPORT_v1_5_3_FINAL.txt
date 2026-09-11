@@ -1,0 +1,80 @@
+TaskbarLayoutTint v1.5.3 — FINAL SANDBOX VALIDATION
+===================================================
+
+Build:
+  TaskbarLayoutTint_COMPOSITION_CURSOR_v1.5.3_20260911
+  Windows 10 x64 target
+  Go 1.23.2
+
+Functional change from v1.5.2:
+  Tinted system cursor roles: exactly 2
+    - OCR_NORMAL / Arrow
+    - OCR_HAND / Hand
+  Windows-normal roles include:
+    - I-Beam
+    - Wait
+    - Cross
+    - Up
+    - all Resize roles
+    - Move
+    - No
+    - AppStarting
+
+Safety behavior:
+  - SPI_SETCURSORS runs before applying EN cursor tint.
+  - This restores all cursor roles from the user's configured Windows scheme.
+  - Only Arrow + Hand are then replaced.
+  - On any cursor failure, the complete Windows cursor scheme is restored.
+  - v1.5.2 watcher/install folder is explicitly stopped/cleaned before v1.5.3.
+
+Final executed validation:
+  gofmt                                      PASS
+  unit/state tests x1000                    PASS
+  race detector x50                         PASS
+  checkptr x100                             PASS
+  Linux go vet                              PASS
+  Windows amd64 go vet                      PASS
+  Windows amd64 release build               PASS
+  Windows amd64 checkptr build              PASS
+  Windows amd64 test binary compile         PASS
+  static/regression audit                   PASS
+  binary API audit                          PASS
+
+Critical functions byte-identical to v1.5.2:
+  keyboardProc                              PASS
+  winEventProc                              PASS
+  controlWndProc                            PASS
+  refreshLanguage                           PASS
+  applyTint                                 PASS
+  rebind                                    PASS
+
+Architecture checks:
+  permanent polling                         ABSENT
+  mouse hook                                ABSENT
+  blocking GetMessage event loop            PRESENT
+  SetWindowCompositionAttribute             PRESENT
+  SetSystemCursor                           PRESENT
+  SetLayeredWindowAttributes                ABSENT
+  Accent/theme registry modification        ABSENT
+  no-args resident watcher                  IMPOSSIBLE
+  RUN_ALL pause/file lock                   ABSENT
+
+Cursor policy tests:
+  exactly Arrow + Hand tinted               PASS
+  I-Beam explicitly excluded                PASS
+  utility cursors explicitly excluded       PASS
+  acceptance requires exactly 2 objects     PASS
+
+Performance microbenchmark (2 roles, synthetic 64x64 each):
+  ~0.08 ms per two-role pixel transformation in Linux sandbox
+  0 allocations/op
+
+Note:
+  One intermediate static-audit REGEX was written incorrectly and initially
+  reported the valid Go array declaration as FAIL. The audit harness was fixed;
+  production code was not changed. The corrected audit passed.
+
+Important environment limit:
+  The sandbox is Linux and cannot display a real Windows 10 Explorer cursor.
+  The delivered EXE therefore retains the Windows-side pre-install acceptance
+  test and 10-second real CPU gate before installation.
