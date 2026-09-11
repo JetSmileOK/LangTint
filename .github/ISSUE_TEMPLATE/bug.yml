@@ -1,0 +1,34 @@
+name: Compatibility or bug report
+description: Report a reproducible LangTint problem without personal data.
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: LangTint version / build ID
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows edition, build and CPU architecture
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Layouts, shortcut, cursor scheme and taskbar customizations
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted report (optional)
+      description: Remove account names, personal paths and private information before posting.
+      render: text

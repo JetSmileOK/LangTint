@@ -1,56 +1,74 @@
 name: Build Windows x64
-
 on:
   push:
-    branches: [ main ]
+  pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version: '1.23.2'
           cache: false
-
-      - name: Assemble large source files
-        run: python3 ASSEMBLE_SOURCE.py
-
-      - name: Test
+      - name: Assemble and verify reviewed source
+        run: python tools/release.py assemble
+      - name: Packaging regression tests
+        run: python -m unittest discover -s tools -p "test_*.py" -v
+      - name: Parse PowerShell signature verifier
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'tools/verify_signature.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'PowerShell syntax check failed' }
+      - name: Go unit tests
         working-directory: source
-        run: |
-          go test ./...
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./...
-
-      - name: Build Windows x64
+        run: go test -count=1 ./...
+      - name: Race detector (platform-independent tests)
+        if: runner.os == 'Linux'
         working-directory: source
+        run: go test -race ./...
+      - name: Vet Windows target
+        working-directory: source
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go vet ./...
+      - name: Build Windows GUI executable
+        working-directory: source
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ../TaskbarLayoutTint_v1_5_3.exe .
+      - name: Recheck source and stage unsigned package
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        shell: bash
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-H=windowsgui -s -w' -o ../TaskbarLayoutTint_v1_5_3.exe .
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp TaskbarLayoutTint_v1_5_3.exe dist/
-          cp TaskbarLayoutTint_v1_5_3.exe.manifest dist/
-          cp RUN_ALL_AND_INSTALL.cmd STATUS.cmd UNINSTALL.cmd README_RU.txt BUILD_ID.txt dist/
-          (cd dist && zip -9 TaskbarLayoutTint_COMPOSITION_CURSOR_v1_5_3_Win10.zip \
-            TaskbarLayoutTint_v1_5_3.exe \
-            TaskbarLayoutTint_v1_5_3.exe.manifest \
-            RUN_ALL_AND_INSTALL.cmd STATUS.cmd UNINSTALL.cmd README_RU.txt BUILD_ID.txt)
-
-      - name: Upload tested package
-        uses: actions/upload-artifact@v4
+          python tools/release.py verify-source
+          python tools/release.py stage --binary TaskbarLayoutTint_v1_5_3.exe --output stage --commit "$SOURCE_COMMIT"
+          python tools/release.py package --stage stage --output dist
+      - name: Upload preview, not an automatically published release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: TaskbarLayoutTint-v1.5.3-Win10-x64
-          path: |
-            dist/TaskbarLayoutTint_COMPOSITION_CURSOR_v1_5_3_Win10.zip
-            dist/TaskbarLayoutTint_v1_5_3.exe
+          name: LangTint-unsigned-${{ runner.os }}-${{ github.sha }}
+          path: dist/*
           if-no-files-found: error
+          retention-days: 30

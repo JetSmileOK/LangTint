@@ -1,0 +1,76 @@
+name: Prepare release draft
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact vMAJOR.MINOR.PATCH matching packaging/release.json
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-draft
+  cancel-in-progress: false
+jobs:
+  draft:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate exact version; never interpolate input into code
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          python - <<'PYCODE'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from release import config
+          expected = 'v' + config()['version']
+          if os.environ['REQUESTED_TAG'] != expected:
+              raise SystemExit('Tag must equal ' + expected)
+          PYCODE
+          if git rev-parse --verify "refs/tags/$REQUESTED_TAG" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$REQUESTED_TAG")" = "$GITHUB_SHA" || { echo 'Tag points to another commit'; exit 1; }
+          fi
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: '1.23.2'
+          cache: false
+      - run: python tools/release.py assemble
+      - run: python -m unittest discover -s tools -p "test_*.py" -v
+      - name: Test and build from this commit
+        working-directory: source
+        run: |
+          go test ./...
+          go test -race ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-H=windowsgui -s -w' -o ../TaskbarLayoutTint_v1_5_3.exe .
+      - name: Stage and package exact output
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          python tools/release.py stage --binary TaskbarLayoutTint_v1_5_3.exe --output stage --commit "$SOURCE_COMMIT"
+          python tools/release.py package --stage stage --output dist
+      - name: Create draft prerelease; never overwrite an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$REQUESTED_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it'; exit 1
+          fi
+          {
+            echo 'Unsigned Windows 10 x64 preview.'
+            printf 'Built from commit %s.\n' "$GITHUB_SHA"
+            echo 'SignPath is not active. Windows may warn about an unknown publisher.'
+            echo 'Read README, compatibility limits, PRIVACY.md and CODE_SIGNING_POLICY.md.'
+            echo 'Test on a real Windows 10 desktop before promoting this draft.'
+          } > release-notes.txt
+          gh release create "$REQUESTED_TAG" dist/*.zip dist/SHA256SUMS.txt --target "$GITHUB_SHA" --draft --prerelease --title "LangTint $REQUESTED_TAG - unsigned preview" --notes-file release-notes.txt
