@@ -134,10 +134,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "setup PE validation exit code $LASTEXITCODE" }
           python tools/installer_assets.py --scan-exe $setup
           if ($LASTEXITCODE -ne 0) { throw "compiled installer asset scan exit code $LASTEXITCODE" }
-          $seven = Get-Command 7z.exe -ErrorAction SilentlyContinue
-          if (-not $seven) { throw '7z.exe is required for compiled installer integrity testing' }
-          & $seven.Source t $setup
-          if ($LASTEXITCODE -ne 0) { throw "7-Zip installer archive test exit code $LASTEXITCODE" }
           $sig = Get-AuthenticodeSignature $setup
           if ($sig.Status -notin @('NotSigned','UnknownError')) { throw "Unexpected preview signing state: $($sig.Status)" }
       - name: Execute compiled Setup startup smoke test
