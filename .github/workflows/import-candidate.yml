@@ -37,16 +37,19 @@ jobs:
           diff -u <(LC_ALL=C sort .candidate-import/files.txt) <(LC_ALL=C sort /tmp/candidate-files.txt)
           tar -xJf /tmp/candidate.tar.xz
 
-          # Remove superseded v1.5.3 build machinery/files. Historical evidence under docs/engineering stays.
+          # This temporary Action token may not update workflow files. Keep them unchanged here;
+          # the authenticated maintainer connector applies the reviewed workflow files afterward.
+          git checkout HEAD -- .github/workflows/build.yml .github/workflows/release.yml
+
+          # Remove superseded v1.5.3 build machinery/files. Historical evidence stays in docs/engineering.
           rm -rf tools/internal/source_fragments
           rm -rf packaging/portable
           rm -f packaging/windows/TaskbarLayoutTint_v1_5_3.exe.manifest
 
-          # Remove this one-shot transport and workflow from the resulting product tree.
-          rm -rf .candidate-import
-          rm -f .github/workflows/import-candidate.yml
-
+          # Keep the verified transport and this one-shot workflow unchanged until the maintainer
+          # connector atomically installs the reviewed workflows and removes temporary import files.
           git add -A
+          git reset -- .candidate-import .github/workflows/import-candidate.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Import LangTint v1.7 runtime and graphical installer candidate'
