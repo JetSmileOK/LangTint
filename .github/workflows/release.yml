@@ -76,14 +76,16 @@ jobs:
           go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ..\build\LangTint.exe .
           if ($LASTEXITCODE) { throw 'Go build failed' }
 
-      - name: Stage deterministic portable ZIP
+      - name: Stage deterministic portable ZIP for internal validation
         shell: pwsh
         env:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path('build/LangTint.exe'))"
           python tools/release.py stage --binary build/LangTint.exe --output stage --commit "$env:SOURCE_COMMIT"
-          python tools/release.py package --stage stage --output dist
+          python tools/release.py package --stage stage --output internal-dist
+          $portable = 'internal-dist\LangTint-v1.7.1-Windows10-x64-unsigned.zip'
+          if (-not (Test-Path $portable)) { throw 'Internal portable package missing' }
 
       - name: Bootstrap verified Inno Setup 7.1.0
         shell: pwsh
@@ -109,23 +111,24 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force packaging\installer\build | Out-Null
+          New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item build\LangTint.exe packaging\installer\build\LangTint.exe
           Copy-Item packaging\windows\LangTint.exe.manifest packaging\installer\build\LangTint.exe.manifest
           & "$env:ISCC_PATH" /Qp packaging\installer\LangTint.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC exit code $LASTEXITCODE" }
-          $setup = 'packaging\installer\output\LangTint-Setup-x64.exe'
-          if (-not (Test-Path $setup)) { throw 'Installer output missing' }
-          python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setup'))"
-          python tools/installer_assets.py --scan-exe $setup
+          $setupSource = 'packaging\installer\output\LangTint-Setup-x64.exe'
+          if (-not (Test-Path $setupSource)) { throw 'Installer output missing' }
+          python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setupSource'))"
+          python tools/installer_assets.py --scan-exe $setupSource
           if ($LASTEXITCODE -ne 0) { throw 'Compiled installer asset scan failed' }
-          $sig = Get-AuthenticodeSignature $setup
+          $sig = Get-AuthenticodeSignature $setupSource
           if ($sig.Status -notin @('NotSigned','UnknownError')) { throw "Unexpected preview signing state: $($sig.Status)" }
-          Copy-Item $setup dist\LangTint-Setup-x64.exe
+          Copy-Item $setupSource dist\LangTint-Setup.exe
 
-      - name: Execute compiled Setup startup smoke test
+      - name: Execute public Setup startup smoke test
         shell: pwsh
         run: |
-          $setup = (Resolve-Path 'dist\LangTint-Setup-x64.exe').Path
+          $setup = (Resolve-Path 'dist\LangTint-Setup.exe').Path
           $log = Join-Path $PWD 'release-setup-startup-smoke.log'
           $args = @('/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log")
           $p = Start-Process -FilePath $setup -ArgumentList $args -PassThru
@@ -147,10 +150,11 @@ jobs:
             }
           }
 
-      - name: Final release hashes
+      - name: Final public release hashes
         shell: pwsh
         run: |
           $files = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'LangTint-Setup.exe') { throw 'Public release must contain exactly one binary' }
           $lines = foreach ($f in $files) { "{0}  {1}" -f (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $f.Name }
           [System.IO.File]::WriteAllLines((Join-Path $PWD 'dist\SHA256SUMS.txt'), $lines, [System.Text.UTF8Encoding]::new($false))
           Get-Content dist\SHA256SUMS.txt
@@ -164,15 +168,16 @@ jobs:
           gh release view $env:REQUESTED_TAG *> $null
           if ($LASTEXITCODE -eq 0) { throw 'Release already exists; refusing to overwrite it' }
           @"
-          Unsigned Windows 10 x64 release candidate.
+          Windows 10 x64 release candidate.
 
-          Recommended download: LangTint-Setup-x64.exe
-          Advanced/portable: LangTint-v1.7.1-Windows10-x64-unsigned.zip
+          Download: LangTint-Setup.exe
+
+          One installer. No portable/developer files in the public release.
 
           Built from commit $env:GITHUB_SHA.
           Source hashes, 100x runtime tests, deep installer asset checks and Windows startup smoke passed in CI.
           SignPath is not active yet; Windows may warn about an unknown publisher.
           This draft must pass real Windows 10 desktop acceptance before promotion to stable.
           "@ | Set-Content release-notes.txt -Encoding utf8
-          gh release create $env:REQUESTED_TAG dist\LangTint-Setup-x64.exe dist\LangTint-v1.7.1-Windows10-x64-unsigned.zip dist\SHA256SUMS.txt --target $env:GITHUB_SHA --draft --prerelease --title "LangTint $env:REQUESTED_TAG - installer release candidate" --notes-file release-notes.txt
+          gh release create $env:REQUESTED_TAG dist\LangTint-Setup.exe dist\SHA256SUMS.txt --target $env:GITHUB_SHA --draft --prerelease --title "LangTint $env:REQUESTED_TAG" --notes-file release-notes.txt
           if ($LASTEXITCODE) { throw 'Draft release creation failed' }

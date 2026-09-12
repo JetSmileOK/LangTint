@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest an improvement that preserves LangTint's lightweight, ambient design
+title: "[Feature] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve LangTint. Please describe the problem first, then the proposed solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or annoyance would this solve?
+      placeholder: When I use three keyboard layouts, I cannot distinguish...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What behavior would you like LangTint to provide?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Windows compatibility
+        - Layout / color mapping
+        - Installer / updates
+        - Accessibility / UX
+        - Performance / reliability
+        - Distribution / packaging
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version/build
+      placeholder: Windows 10 22H2 build 19045 / Windows 11 build ...
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Anything that should remain unchanged?
+      description: For example no polling, no text inspection, no overlays, etc.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find the same request.
+          required: true
+        - label: This request does not require LangTint to collect or rewrite typed text.
+          required: false
