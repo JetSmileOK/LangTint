@@ -41,13 +41,15 @@ Download it from [Releases](https://github.com/JetSmileOK/LangTint/releases) and
 - runs LangTint's non-mutating visual self-test before enabling autostart;
 - rolls back safely if the self-test fails;
 - registers a normal uninstall entry in **Settings → Apps → Installed apps**;
+- keeps the installed program folder minimal: app, manifest, icon and the standard uninstaller only;
+- never opens Notepad or developer reports after a successful installation;
 - restores the Windows cursor scheme and removes LangTint autostart during uninstall.
 
 The installer is built with a modern light/dark UI and the LangTint icon. Until free code signing is activated, preview builds are **unsigned**, so Windows may show an unknown-publisher or reputation warning.
 
 ## Compatibility
 
-The v1.7.0 candidate deliberately supports:
+The v1.7.1 candidate deliberately supports:
 
 - Windows 10 x64, builds **14393 through 19045** (the runtime gate fails safe outside the validated Windows 10 range);
 - the standard Explorer taskbar;

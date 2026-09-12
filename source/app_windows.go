@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	buildID       = "LangTint_PUBLIC_v1.7.0_20260912"
+	buildID       = "LangTint_PUBLIC_v1.7.1_20260912"
 	appName       = "LangTint"
 	installFolder = `Programs\LangTint`
 	exeName       = "LangTint.exe"
@@ -1034,6 +1034,13 @@ func idleCPUTest(reportPath string, seconds int) error {
 			fmt.Sprintf("CURSOR_WORKER_FAILURES=%d", atomic.LoadUint64(&r.visualWorker.cursorFailures)),
 		)
 	}
+	minimumWall := time.Duration(seconds) * time.Second * 9 / 10
+	if wall < minimumWall {
+		err := fmt.Errorf("idle CPU wall time %.3fs is shorter than required %.3fs", wall.Seconds(), minimumWall.Seconds())
+		lines = append(lines, "IDLE_CPU_TEST=FAIL", "ERROR="+err.Error())
+		_ = writeReport(reportPath, lines)
+		return err
+	}
 	if oneCorePct > 0.50 {
 		err := fmt.Errorf("idle CPU %.4f%% exceeds 0.50%% of one core", oneCorePct)
 		lines = append(lines, "IDLE_CPU_TEST=FAIL", "ERROR="+err.Error())
@@ -1221,14 +1228,29 @@ func localInstallDir() (string, error) {
 	return filepath.Join(base, installFolder), nil
 }
 
+func localDataDir() (string, error) {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		return "", errors.New("LOCALAPPDATA is empty")
+	}
+	return filepath.Join(base, appName), nil
+}
+
 func installedPaths() (dir, exe, manifest, log string, err error) {
 	dir, err = localInstallDir()
 	if err != nil {
 		return
 	}
+	dataDir, dataErr := localDataDir()
+	if dataErr != nil {
+		err = dataErr
+		return
+	}
 	exe = filepath.Join(dir, exeName)
 	manifest = exe + ".manifest"
-	log = filepath.Join(dir, "LangTint.log")
+	// Keep the program directory clean. Runtime diagnostics live in the
+	// per-user data directory and are removed by the normal uninstaller.
+	log = filepath.Join(dataDir, "Logs", "LangTint.log")
 	return
 }
 
@@ -1558,7 +1580,7 @@ func acceptAndInstall(reportPath string) error {
 	}
 	lines = appendReportFile(lines, "1 EVENT SELF TEST", selfReport)
 
-	if err := idleCPUTest(idleReport, 10); err != nil {
+	if err := runIdleCPUChild(idleReport, 10); err != nil {
 		lines = appendReportFile(lines, "2 IDLE CPU TEST", idleReport)
 		return finish("FAIL", "IDLE_CPU_TEST", err)
 	}
@@ -1604,19 +1626,49 @@ func parseArgValue(args []string, name string) string {
 	return ""
 }
 
-func defaultAcceptanceReport() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(os.TempDir(), "LangTint_REPORT.txt")
+func runIdleCPUChild(reportPath string, seconds int) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
 	}
-	return filepath.Join(home, "Downloads", "LangTint_REPORT.txt")
+	cmd := exec.Command(exe, "--idle-test", "--seconds", fmt.Sprintf("%d", seconds), "--report", reportPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("idle CPU child process: %w", err)
+	}
+	return nil
+}
+
+func launchProduct() error {
+	current, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	current, _ = filepath.Abs(current)
+	_, installedExe, _, logPath, err := installedPaths()
+	if err != nil {
+		return err
+	}
+	installedExe, _ = filepath.Abs(installedExe)
+	if !strings.EqualFold(filepath.Clean(current), filepath.Clean(installedExe)) {
+		showInfoMessage("LangTint", "Для установки используйте LangTint-Setup-x64.exe.\n\nLangTint.exe сам себя не устанавливает и не открывает диагностические отчёты.")
+		return nil
+	}
+	if findWindow(controlClassName) != 0 || isMutexPresent(mutexName) {
+		return nil
+	}
+	return runWatcher(logPath)
+}
+
+func defaultAcceptanceReport() string {
+	return filepath.Join(os.TempDir(), "LangTint_ACCEPTANCE_REPORT.txt")
 }
 
 func main() {
 	args := os.Args[1:]
 	mode := resolveMode(args)
 	report := parseArgValue(args, "--report")
-	if (mode == "--accept-install" || mode == "--interactive") && report == "" {
+	if mode == "--accept-install" && report == "" {
 		report = defaultAcceptanceReport()
 	}
 
@@ -1627,21 +1679,8 @@ func main() {
 
 	var err error
 	switch mode {
-	case "--interactive":
-		showInfoMessage("LangTint v1.7", "Начинаю автоматическую проверку и установку.\n\nЭто займет примерно 10-20 секунд. Фоновый watcher из этой папки запускаться не будет.")
-		err = acceptAndInstall(report)
-		if report != "" {
-			cmd := exec.Command("notepad.exe", report)
-			if startErr := cmd.Start(); startErr == nil {
-				_ = cmd.Process.Release()
-			}
-		}
-		if err != nil {
-			showInfoMessage("LangTint v1.7 - ошибка", "Установка не выполнена. Отчет открыт в Блокноте. Никакой watcher из исходной папки не оставлен запущенным.")
-			os.Exit(1)
-		}
-		showInfoMessage("LangTint v1.7", "Проверки и установка завершены успешно. Отчет открыт в Блокноте. Исходную папку после закрытия этого окна можно удалить.")
-		return
+	case "--launch":
+		err = launchProduct()
 	case "--accept-install":
 		err = acceptAndInstall(report)
 	case "--self-test":

@@ -2,7 +2,7 @@
 
 ## Current release candidate
 
-The current public candidate is **v1.7.0**. It carries forward the reviewed v1.6 hardening runtime and adds only installer/migration behavior required for a normal Windows setup flow.
+The current public candidate is **v1.7.1**. It carries forward the reviewed v1.6 hardening runtime and adds only installer/migration behavior required for a normal Windows setup flow.
 
 Normal users should receive **`LangTint-Setup-x64.exe`**. The portable ZIP remains an advanced/testing option.
 
@@ -25,14 +25,14 @@ A hosted runner does **not** replace an interactive Windows 10 Explorer acceptan
 
 ## Draft release
 
-Run **Prepare LangTint release draft** from `main` and enter `v1.7.0`.
+Run **Prepare LangTint release draft** from `main` and enter `v1.7.1`.
 
 The workflow repeats the release gates, compiles the installer, recalculates SHA-256 and creates a **draft prerelease** only. It refuses to overwrite an existing release. Stable publication remains a deliberate manual action after real-machine acceptance.
 
 Recommended release assets:
 
 - `LangTint-Setup-x64.exe` — normal users;
-- `LangTint-v1.7.0-Windows10-x64-unsigned.zip` — advanced/portable testing;
+- `LangTint-v1.7.1-Windows10-x64-unsigned.zip` — advanced/portable testing;
 - `SHA256SUMS.txt` — integrity verification.
 
 Do not publish local binaries in place of CI outputs.

@@ -139,12 +139,12 @@ jobs:
           Unsigned Windows 10 x64 release candidate.
 
           Recommended download: LangTint-Setup-x64.exe
-          Advanced/portable: LangTint-v1.7.0-Windows10-x64-unsigned.zip
+          Advanced/portable: LangTint-v1.7.1-Windows10-x64-unsigned.zip
 
           Built from commit $env:GITHUB_SHA.
           Source hashes, 100x runtime tests, installer policy tests and Windows x64 build passed in CI.
           SignPath is not active yet; Windows may warn about an unknown publisher.
           This draft must pass real Windows 10 desktop acceptance before promotion to stable.
           "@ | Set-Content release-notes.txt -Encoding utf8
-          gh release create $env:REQUESTED_TAG dist\LangTint-Setup-x64.exe dist\LangTint-v1.7.0-Windows10-x64-unsigned.zip dist\SHA256SUMS.txt --target $env:GITHUB_SHA --draft --prerelease --title "LangTint $env:REQUESTED_TAG - installer release candidate" --notes-file release-notes.txt
+          gh release create $env:REQUESTED_TAG dist\LangTint-Setup-x64.exe dist\LangTint-v1.7.1-Windows10-x64-unsigned.zip dist\SHA256SUMS.txt --target $env:GITHUB_SHA --draft --prerelease --title "LangTint $env:REQUESTED_TAG - installer release candidate" --notes-file release-notes.txt
           if ($LASTEXITCODE) { throw 'Draft release creation failed' }
