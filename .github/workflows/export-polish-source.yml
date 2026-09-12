@@ -19,6 +19,8 @@ jobs:
             source/**
             packaging/**
             tools/**
+            docs/**
+            assets/**
             .github/workflows/build.yml
             .github/workflows/release.yml
             README.md
