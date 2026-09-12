@@ -18,14 +18,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'Transport part hashes:'
-          sha256sum tools/.polish/part*.b64
-          echo 'Transport part sizes:'
-          wc -c tools/.polish/part*.b64
-          cat tools/.polish/part*.b64 | base64 -d > /tmp/product-polish.patch
-          echo 'Reconstructed patch:'
-          sha256sum /tmp/product-polish.patch
-          wc -c /tmp/product-polish.patch
+          test "$(find tools/.polish2 -name 'p*.b64' | wc -l)" -eq 20
+          cat tools/.polish2/p*.b64 | base64 -d > /tmp/product-polish.patch
           echo 'c3357dbf4dff21b909b339d8fe4fdb674e68d0cb9704ee7dec43d33f3141e43e  /tmp/product-polish.patch' | sha256sum -c -
           git apply --check /tmp/product-polish.patch
           git apply /tmp/product-polish.patch
@@ -34,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf tools/.polish
+          rm -rf tools/.polish tools/.polish2
           rm -f .github/workflows/apply-product-polish.yml .github/workflows/export-polish-source.yml
           git config user.name 'JetSmileOK automation'
           git config user.email 'actions@users.noreply.github.com'
