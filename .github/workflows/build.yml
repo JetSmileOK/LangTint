@@ -11,6 +11,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.27.1'
+  PYTHONUTF8: '1'
   INNO_TAG: 'is-7_1_0'
   INNO_ASSET: 'innosetup-7.1.0-x64.exe'
   INNO_SHA256: '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
@@ -31,7 +32,7 @@ jobs:
         run: |
           python tools/release.py verify-source
           python tools/generate_icon.py
-          python tols/release.py verify-installer
+          python tools/release.py verify-installer
           python -m unittest discover -s tools -p "test_*.py" -v
       - name: Go suite x100
         working-directory: source
@@ -68,11 +69,11 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - name: Verify source and installer tests
-        shell: pwsh
+        shell: bash
         run: |
           python tools/release.py verify-source
           python tools/generate_icon.py
-          python tols/release.py verify-installer
+          python tools/release.py verify-installer
           python -m unittest discover -s tools -p "test_*.py" -v
       - name: Go tests x100
         working-directory: source
@@ -86,14 +87,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force ..\build | Out-Null
           go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ..\build\LangTint.exe .
+          if ($LASTEXITCODE -ne 0) { throw "go build exit code $LASTEXITCODE" }
       - name: Validate and stage raw package
         shell: pwsh
         env:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path('build/LangTint.exe'))"
+          if ($LASTEXITCODE -ne 0) { throw "PE validation exit code $LASTEXITCODE" }
           python tools/release.py stage --binary build/LangTint.exe --output stage --commit "$env:SOURCE_COMMIT"
+          if ($LASTEXITCODE -ne 0) { throw "stage exit code $LASTEXITCODE" }
           python tools/release.py package --stage stage --output dist
+          if ($LASTEXITCODE -ne 0) { throw "package exit code $LASTEXITCODE" }
       - name: Bootstrap verified Inno Setup 7.1.0
         shell: pwsh
         env:
@@ -101,13 +106,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force .inno | Out-Null
           gh release download $env:INNO_TAG --repo jrsoftware/issrc --pattern $env:INNO_ASSET --dir .inno
+          if ($LASTEXITCODE -ne 0) { throw "gh download exit code $LASTEXITCODE" }
           $asset = Join-Path $PWD ".inno\$env:INNO_ASSET"
           $actual = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $env:INNO_SHA256) { throw "Inno Setup SHA-256 mismatch: $actual" }
           $sig = Get-AuthenticodeSignature $asset
           if ($sig.Status -ne 'Valid') { throw "Inno Setup Authenticode status: $($sig.Status)" }
           if ($sig.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') { throw "Unexpected Inno Setup publisher: $($sig.SignerCertificate.Subject)" }
-          $p = Start-Process -FilePath $asset -ArgumentList '/VERYSILENT','/SUPPDESSMSGBOXES','/NORESTART','/CURRENTUSER' -Wait -PassThru
+          $p = Start-Process -FilePath $asset -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Inno Setup install exit code $($p.ExitCode)" }
           $iscc = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Filter ISCC.exe -File -Recurse | Select-Object -First 1
           if (-not $iscc) { throw 'ISCC.exe not found after verified Inno Setup installation' }
@@ -123,6 +129,7 @@ jobs:
           $setup = 'packaging\installer\output\LangTint-Setup-x64.exe'
           if (-not (Test-Path $setup)) { throw 'Installer output missing' }
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setup'))"
+          if ($LASTEXITCODE -ne 0) { throw "setup PE validation exit code $LASTEXITCODE" }
           $sig = Get-AuthenticodeSignature $setup
           if ($sig.Status -notin @('NotSigned','UnknownError')) { throw "Unexpected preview signing state: $($sig.Status)" }
       - name: Assemble release preview assets
@@ -130,7 +137,7 @@ jobs:
         run: |
           Copy-Item packaging\installer\output\LangTint-Setup-x64.exe dist\LangTint-Setup-x64.exe
           $files = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name
-          $lines = foreach ($f in $files) { "{0}   {1}" -f (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $f.Name }
+          $lines = foreach ($f in $files) { "{0}  {1}" -f (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $f.Name }
           [System.IO.File]::WriteAllLines((Join-Path $PWD 'dist\SHA256SUMS.txt'), $lines, [System.Text.UTF8Encoding]::new($false))
           Get-Content dist\SHA256SUMS.txt
       - name: Upload tested installer and package
