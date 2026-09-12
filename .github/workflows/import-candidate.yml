@@ -1,0 +1,53 @@
+name: Internal candidate import
+
+on:
+  push:
+    branches: [ installer-v1.6 ]
+    paths:
+      - '.candidate-import/**'
+      - '.github/workflows/import-candidate.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: candidate-import-installer-v1.6
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.ref == 'refs/heads/installer-v1.6'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Verify and import reviewed candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -l < .candidate-import/files.txt)" -eq 42
+          cat .candidate-import/chunk-* | base64 -d > /tmp/candidate.tar.xz
+          echo "059caf1693f6fb3b8cd75ac08451bb7b86cf3c691162a71d87bea487311e671a  /tmp/candidate.tar.xz" | sha256sum -c -
+          tar -tJf /tmp/candidate.tar.xz > /tmp/candidate-files.txt
+          if grep -Eq '(^/|(^|/)\.\.(/|$))' /tmp/candidate-files.txt; then
+            echo 'Unsafe archive path'; exit 1
+          fi
+          diff -u <(LC_ALL=C sort .candidate-import/files.txt) <(LC_ALL=C sort /tmp/candidate-files.txt)
+          tar -xJf /tmp/candidate.tar.xz
+
+          # Remove superseded v1.5.3 build machinery/files. Historical evidence under docs/engineering stays.
+          rm -rf tools/internal/source_fragments
+          rm -rf packaging/portable
+          rm -f packaging/windows/TaskbarLayoutTint_v1_5_3.exe.manifest
+
+          # Remove this one-shot transport and workflow from the resulting product tree.
+          rm -rf .candidate-import
+          rm -f .github/workflows/import-candidate.yml
+
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Import LangTint v1.7 runtime and graphical installer candidate'
+          git push origin HEAD:installer-v1.6
