@@ -69,8 +69,8 @@ Source: "build\LangTint.exe"; DestName: "LangTint-preflight.exe"; Flags: dontcop
 Source: "build\LangTint.exe.manifest"; DestName: "LangTint-preflight.exe.manifest"; Flags: dontcopy noencryption
 
 ; Installed product files.
-Source: "build\LangTint.exe"; DestDir: "{app}"; DestName: "LangTint.exe"; Flags: ignoreversion replacesameversion
-Source: "build\LangTint.exe.manifest"; DestDir: "{app}"; DestName: "LangTint.exe.manifest"; Flags: ignoreversion replacesameversion
+Source: "build\LangTint.exe"; DestDir: "{app}"; DestName: "LangTint.exe"; Flags: ignoreversion
+Source: "build\LangTint.exe.manifest"; DestDir: "{app}"; DestName: "LangTint.exe.manifest"; Flags: ignoreversion
 Source: "..\..\assets\LangTint.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
