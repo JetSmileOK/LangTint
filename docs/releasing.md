@@ -1,25 +1,50 @@
 # Releasing LangTint
 
-## Scope of this change
+## Current release candidate
 
-This is release infrastructure for the exact v1.5.3 source already published in this repository. Application `.go` files are unchanged. The separately supplied v1.6 archive must have its own reviewed import/compatibility evidence; do not replace the source underneath a v1.5.3 tag.
+The current public candidate is **v1.7.0**. It carries forward the reviewed v1.6 hardening runtime and adds only installer/migration behavior required for a normal Windows setup flow.
 
-## Preview build
+Normal users should receive **`LangTint-Setup-x64.exe`**. The portable ZIP remains an advanced/testing option.
 
-The `Build Windows x64` workflow runs on push and pull request with read-only repository permissions. It assembles/verifies the source snapshot, runs Go and packaging tests, builds a Windows GUI executable, and uploads an explicitly **unsigned** ZIP plus SHA256SUMS. Do not run `--self-test`, `--install` or `--accept-install` on a hosted runner: these affect the desktop and do not establish Windows 10 user-session compatibility.
+## CI gates
+
+The `Build and test Windows x64` workflow runs on pull requests and pushes. It:
+
+1. verifies the reviewed source SHA-256 manifest;
+2. verifies installer policy and repository release tests;
+3. runs the Go runtime suite 100 times;
+4. runs the race detector on Linux;
+5. vets/builds the Windows x64 GUI target;
+6. stages a deterministic portable ZIP;
+7. downloads the pinned official Inno Setup 7.1.0 asset;
+8. checks its pinned SHA-256 and Authenticode publisher before installation on the hosted Windows runner;
+9. compiles `LangTint-Setup-x64.exe`;
+10. uploads only the tested installer, portable ZIP and hashes.
+
+A hosted runner does **not** replace an interactive Windows 10 Explorer acceptance test. The final candidate still needs a real desktop check for taskbar color, Arrow/Hand cursor color, upgrade, uninstall, reboot, sleep/resume and multiple monitors.
 
 ## Draft release
 
-Run `Prepare release draft` from **main** in Actions. Enter the exact tag `v1.5.3` for the current `packaging/release.json`. The workflow checks that the tag/version match, refuses an existing release, builds from that run's immutable commit and creates a **draft prerelease** with unsigned assets and hashes. It does not publish a stable release automatically.
+Run **Prepare LangTint release draft** from `main` and enter `v1.7.0`.
 
-Before publishing the draft, verify source provenance, package checksums, build ID, current signing status, and real Windows acceptance/visual results. Review compatibility, clean installation, upgrade, uninstall, reboot, sleep/resume and multiple displays. The release notes must distinguish tested cases from unsupported ones. Use a new tag rather than replacing any already published asset.
+The workflow repeats the release gates, compiles the installer, recalculates SHA-256 and creates a **draft prerelease** only. It refuses to overwrite an existing release. Stable publication remains a deliberate manual action after real-machine acceptance.
 
-## Signed release preparation
+Recommended release assets:
 
-See `packaging/signpath-workflow.yml.example` and `docs/signing/signpath-setup.md`. This template is intentionally **not an active workflow**. It requires Foundation acceptance, an approved project/policy, trusted-build integration, product/version resources and protected secrets. Do not rename it to `.github/workflows/...` until those requirements and the signature-verification step have been tested. No paid service is provisioned by these files.
+- `LangTint-Setup-x64.exe` — normal users;
+- `LangTint-v1.7.0-Windows10-x64-unsigned.zip` — advanced/portable testing;
+- `SHA256SUMS.txt` — integrity verification.
 
-## Output and integrity
+Do not publish local binaries in place of CI outputs.
 
-`tools/release.py stage` uses an allowlist; personal reports, logs, old EXEs, source fragments and secrets are not included in the end-user ZIP. `package` uses deterministic ZIP timestamps and refuses extra files, stale hashes or an existing archive. The inside SHA256SUMS checks members; the outside SHA256SUMS checks the final ZIP. SHA-256 is integrity evidence, not code signing.
+## Signing
 
-The Go toolchain remains pinned to the old build baseline for this infrastructure change. Updating it is a required separate security/compatibility review before production signing. Nothing here promises a new graphical installer, portable mode, Store acceptance, free-service approval or universal Windows support.
+Current release candidates are explicitly **unsigned**. See `docs/signing/` and `packaging/signpath-workflow.yml.example`.
+
+The signing template remains inactive until SignPath Foundation approval and protected repository configuration are complete. Production signing must eventually cover both the runtime and the final installer: sign the runtime first, compile Setup with the signed runtime, then sign and verify the final Setup executable. Never claim a signed release from a partially signed chain.
+
+## Versioning and corrections
+
+Published assets are immutable evidence. Do not replace an already published binary under the same version. Fixes require a new version/tag.
+
+The runtime/release toolchain is pinned to Go 1.27.1, the current stable release reviewed for this candidate. Future toolchain updates require the same compatibility and release-gate retesting before signing.

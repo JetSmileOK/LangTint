@@ -10,7 +10,7 @@ func resolveMode(args []string) string {
 	}
 	for _, a := range args {
 		switch strings.ToLower(a) {
-		case "--run", "--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--status":
+		case "--run", "--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--stop", "--status":
 			return strings.ToLower(a)
 		}
 	}

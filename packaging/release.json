@@ -1,6 +1,6 @@
 {
-  "version": "1.5.3",
-  "exe": "TaskbarLayoutTint_v1_5_3.exe",
-  "build_id": "TaskbarLayoutTint_COMPOSITION_CURSOR_v1.5.3_20260911",
-  "go_version": "1.23.2"
+  "version": "1.7.0",
+  "exe": "LangTint.exe",
+  "build_id": "LangTint_PUBLIC_v1.7.0_20260912",
+  "go_version": "1.27.1"
 }

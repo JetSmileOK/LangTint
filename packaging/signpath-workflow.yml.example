@@ -1,6 +1,6 @@
-# PREPARATION ONLY: not installed under .github/workflows.
-# Foundation acceptance, VERSIONINFO and protected environment setup required.
-name: SignPath release candidate
+# PREPARATION ONLY: do not copy this into .github/workflows until SignPath Foundation
+# has approved the project and the signing environment/variables are configured.
+name: SignPath LangTint runtime candidate
 on:
   workflow_dispatch:
 permissions:
@@ -23,49 +23,36 @@ jobs:
           PROJECT: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
           CONFIG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          THUMBPRINT: ${{ vars.SIGNPATH_CERT_THUMBPRINT }}
         shell: pwsh
         run: |
           if ($env:SIGNPATH_READY -ne 'true') { throw 'Production signing not approved' }
-          foreach ($name in @('ORG','PROJECT','POLICY','CONFIG','THUMBPRINT')) {
+          foreach ($name in @('ORG','PROJECT','POLICY','CONFIG')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "Missing $name" }
           }
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version: '1.23.2' # Historical baseline: review a supported toolchain before activation.
+          go-version: '1.27.1'
           cache: false
-      - run: python tools/release.py assemble
-      - run: python -m unittest discover -s tools -p "test_*.py" -v
-      - name: Build reviewed source (add reviewed VERSIONINFO resources before activation)
-        working-directory: source
-        env:
-          CGO_ENABLED: '0'
+      - name: Build reviewed runtime
         shell: pwsh
         run: |
-          go test ./...
-          if ($LASTEXITCODE) { throw 'Tests failed' }
+          python tools/release.py verify-source
+          python tools/release.py verify-installer
+          python -m unittest discover -s tools -p "test_*.py" -v
+          Push-Location source
+          go test -count=100 ./...
           go vet ./...
-          if ($LASTEXITCODE) { throw 'Vet failed' }
-          go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ../TaskbarLayoutTint_v1_5_3.exe .
-          if ($LASTEXITCODE) { throw 'Build failed' }
-      - name: Refuse missing product metadata before sending to SignPath
-        id: metadata
-        shell: pwsh
-        run: |
-          $c = Get-Content packaging/release.json -Raw | ConvertFrom-Json
-          $i = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $c.exe).Path)
-          if ($i.ProductName -ne 'LangTint' -or $i.ProductVersion -ne $c.version -or $i.FileVersion -ne $c.version -or $i.OriginalFilename -ne $c.exe) { throw 'VERSIONINFO prerequisite not satisfied' }
-          "version=$($c.version)" >> $env:GITHUB_OUTPUT
-          python tools/release.py stage --binary $c.exe --output stage --commit $env:GITHUB_SHA
-          if ($LASTEXITCODE) { throw 'Staging failed' }
-      - name: Upload exact binary for trusted-build verification
+          New-Item -ItemType Directory -Force ..\build | Out-Null
+          go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ..\build\LangTint.exe .
+          Pop-Location
+      - name: Upload exact runtime signing input
         id: unsigned
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unsigned-signing-input
-          path: TaskbarLayoutTint_v1_5_3.exe
+          path: build/LangTint.exe
           if-no-files-found: error
-      - name: Submit; manual SignPath approval remains required
+      - name: Submit to SignPath; manual approval remains required
         uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -78,18 +65,9 @@ jobs:
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: signed
           parameters: |
-            version: "${{ steps.metadata.outputs.version }}"
-      - name: Verify Authenticode and package only the verified result
-        env:
-          SIGNPATH_CERT_THUMBPRINT: ${{ vars.SIGNPATH_CERT_THUMBPRINT }}
+            version: "1.7.0"
+      - name: Stop here until installer dual-sign flow is reviewed
         shell: pwsh
         run: |
-          $c = Get-Content packaging/release.json -Raw | ConvertFrom-Json
-          ./tools/verify_signature.ps1 -Stage stage -SignedExe (Join-Path signed $c.exe)
-          python tools/release.py package --stage stage --output dist
-          if ($LASTEXITCODE) { throw 'Packaging failed' }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: signed-release-candidate
-          path: dist/*
-          if-no-files-found: error
+          Write-Host 'Runtime signing output received. Do not publish yet.'
+          Write-Host 'The production flow must compile Setup with the signed LangTint.exe and then sign/verify LangTint-Setup-x64.exe separately.'

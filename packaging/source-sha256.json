@@ -1,15 +1,17 @@
 {
-  "app_windows.go": "e963083e1be63aea6f9f1703205696581a413d1f94eb5b662bc324feb4885a47",
+  "app_windows.go": "a09f57401764cf902bbe31d17a5f5a32d863cfaa8501e8c8b38a4c4aa441300c",
   "cursor_logic.go": "b157843ad50aa0229bda388905ae02144877c960247ee4202a4145d6dd4bafec",
   "cursor_logic_test.go": "9af86a771e41cfce42614c873eda9d89f194a499d46eee1228f553cf30697329",
   "cursor_policy.go": "532d740afb810a1e2100ce7586226e59f686028d3ca5019bdb0e976d6105298d",
   "cursor_policy_test.go": "35ecf7e1c08765e262ee3f5badbda37bcdf53eb559d69aab3bdc0dfe08638ba7",
   "cursor_windows.go": "c65722d553bbabc5b673762199ce50de568ae6c7196c7db2e0d8bc9c280b0a73",
-  "go.mod": "a1b3a5adc42f62bc093498c0eab14f0c7f8392f9a5bcfdbcb90cfbe56554bdce",
+  "failure_matrix_test.go": "00f8c778b87404dc501bca54d3edc81b67bb8be1b03325db18a13072fbf31366",
+  "go.mod": "f0d6e28c5525e40065744615b4bbf2eee9d7951d7796f1d58ee25ded182e953e",
+  "hardening_logic.go": "bce91f374265bf1fd3da1917c05528f3e5d2977c438be518450220b467cd30eb",
   "logic.go": "0c7198783cfbaba6a48bd312bd56fcde4fb22dfbcd418b5be772442bd8a53c51",
   "logic_test.go": "20cc31d23ddeb1c0a3bc94abb136fd6dc1f4964cc30799d0b554899319e3c26e",
-  "main_other.go": "d823dfbb08324e5810feca7f3513f176f8324625e1bf2faf5364f89b040b9bc8",
-  "mode.go": "279c6c8a69a3053bba476a9a803ff51ebe26610a1b0d71fe217cf909e883c127",
-  "mode_test.go": "45701b035aff3ef94ddcd45872f51f0099d69df2b08a9f3dded163ebd632fa7f",
-  "winapi_windows.go": "01c98fdbd196887282f9b9e14c6749219a33012c788f6c60bf377e00289c75dc"
+  "main_other.go": "a3cc8587af757c495b876bae879fa061b2d95021428de863a1bcd4e5f3a8c545",
+  "mode.go": "07d91f21910a12981277f5c8d1c3fdea147706a2df75c87faff9a541140d28dd",
+  "mode_test.go": "c48d64bc321641d3035ae9816b0efa98fcf7588f010599addd3728e4e4890ae1",
+  "winapi_windows.go": "90506cbc6afef9f1a116093c9b9ebd9f93dc36c57f7d0c74c423e67b8a4bf859"
 }
