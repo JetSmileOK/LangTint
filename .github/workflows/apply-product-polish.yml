@@ -24,12 +24,15 @@ jobs:
           git apply --check /tmp/product-polish.patch
           git apply /tmp/product-polish.patch
           gofmt -w source/app_windows.go source/mode.go source/mode_test.go source/failure_matrix_test.go
-      - name: Remove temporary transport and commit exact product change
+          # The normal GITHUB_TOKEN cannot mutate workflow files. Keep their current branch
+          # versions in this commit; the reviewed v1.7.1 workflow changes are applied separately
+          # by the repository connector after this product commit succeeds.
+          git checkout -- .github/workflows/build.yml .github/workflows/release.yml
+      - name: Commit product change without workflow mutation
         shell: bash
         run: |
           set -euo pipefail
           rm -rf tools/.polish tools/.polish2
-          rm -f .github/workflows/apply-product-polish.yml .github/workflows/export-polish-source.yml
           git config user.name 'JetSmileOK automation'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
