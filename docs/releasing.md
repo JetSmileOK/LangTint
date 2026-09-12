@@ -35,6 +35,15 @@ Run **Prepare LangTint release draft** from `main` and enter `v1.7.1`.
 
 The workflow repeats the release gates, compiles Setup, recalculates SHA-256 and creates a **draft prerelease** only. It refuses to overwrite an existing release.
 
+The release workflow regression suite requires Git and PowerShell 7 (`pwsh`)
+on PATH. Run `python -m unittest discover -s tools -p "test_release_workflow.py" -v`
+locally before pushing workflow edits. It executes the real workflow blocks with
+the Actions PowerShell exit-code wrapper, disposable Git repositories and a
+stubbed GitHub CLI (no network or release writes). The regular Linux/Windows CI
+test discovery also runs these checks. Coverage includes absent/lightweight/
+annotated/conflicting tags, API failures, existing drafts, pagination and
+fail-fast release gates. This is not Windows desktop acceptance.
+
 Public release assets:
 
 - `LangTint-Setup.exe` — the only normal-user binary;
