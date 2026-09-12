@@ -3,10 +3,14 @@
 *.zip
 /dist/
 /stage/
+/build/
+/packaging/installer/build/
+/packaging/installer/output/
+/.inno/
 
-# Generated source files reconstructed by tools/release.py assemble
-/source/app_windows.go
-/source/winapi_windows.go
+# Generated icon binaries (source is assets/LangTint.svg + tools/generate_icon.py)
+/assets/LangTint.ico
+/assets/LangTint-256.png
 
 # Python
 __pycache__/

@@ -31,3 +31,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+
+## Inno Setup
+
+The Windows installer is compiled with Inno Setup 7.1.0 from the official JRSoftware release. Inno Setup is a build-time/installer component and is not a Go runtime dependency. See the upstream project and license at https://jrsoftware.org/isinfo.php.

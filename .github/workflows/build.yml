@@ -1,4 +1,4 @@
-name: Build Windows x64
+name: Build and test Windows x64
 on:
   push:
   pull_request:
@@ -8,13 +8,17 @@ permissions:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.27.1'
+  PYTHONUTF8: '1'
+  INNO_TAG: 'is-7_1_0'
+  INNO_ASSET: 'innosetup-7.1.0-x64.exe'
+  INNO_SHA256: '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
+
 jobs:
-  test-build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
+  linux-tests:
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -22,27 +26,20 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version: '1.23.2'
+          go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Assemble and verify reviewed source
-        run: python tools/release.py assemble
-      - name: Packaging regression tests
-        run: python -m unittest discover -s tools -p "test_*.py" -v
-      - name: Parse PowerShell signature verifier
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Verify reviewed source and installer policy
         run: |
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'tools/verify_signature.ps1'), [ref]$tokens, [ref]$errors)
-          if ($errors.Count -gt 0) { $errors | Format-List; throw 'PowerShell syntax check failed' }
-      - name: Go unit tests
+          python tools/release.py verify-source
+          python tools/generate_icon.py
+          python tools/release.py verify-installer
+          python -m unittest discover -s tools -p "test_*.py" -v
+      - name: Go suite x100
         working-directory: source
-        run: go test -count=1 ./...
-      - name: Race detector (platform-independent tests)
-        if: runner.os == 'Linux'
+        run: go test -count=100 ./...
+      - name: Race detector x10
         working-directory: source
-        run: go test -race ./...
+        run: go test -race -count=10 ./...
       - name: Vet Windows target
         working-directory: source
         env:
@@ -50,25 +47,103 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: '0'
         run: go vet ./...
-      - name: Build Windows GUI executable
+      - name: Cross-build Windows GUI binary
         working-directory: source
         env:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: '0'
-        run: go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ../TaskbarLayoutTint_v1_5_3.exe .
-      - name: Recheck source and stage unsigned package
-        env:
-          SOURCE_COMMIT: ${{ github.sha }}
+        run: go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ../LangTint.exe .
+      - name: Validate PE
+        run: python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path('LangTint.exe'))"
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Verify source and installer tests
         shell: bash
         run: |
           python tools/release.py verify-source
-          python tools/release.py stage --binary TaskbarLayoutTint_v1_5_3.exe --output stage --commit "$SOURCE_COMMIT"
+          python tools/generate_icon.py
+          python tools/release.py verify-installer
+          python -m unittest discover -s tools -p "test_*.py" -v
+      - name: Go tests x100
+        working-directory: source
+        run: go test -count=100 ./...
+      - name: Vet Windows target
+        working-directory: source
+        run: go vet ./...
+      - name: Build LangTint.exe
+        working-directory: source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ..\build | Out-Null
+          go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ..\build\LangTint.exe .
+          if ($LASTEXITCODE -ne 0) { throw "go build exit code $LASTEXITCODE" }
+      - name: Validate and stage raw package
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path('build/LangTint.exe'))"
+          if ($LASTEXITCODE -ne 0) { throw "PE validation exit code $LASTEXITCODE" }
+          python tools/release.py stage --binary build/LangTint.exe --output stage --commit "$env:SOURCE_COMMIT"
+          if ($LASTEXITCODE -ne 0) { throw "stage exit code $LASTEXITCODE" }
           python tools/release.py package --stage stage --output dist
-      - name: Upload preview, not an automatically published release
+          if ($LASTEXITCODE -ne 0) { throw "package exit code $LASTEXITCODE" }
+      - name: Bootstrap verified Inno Setup 7.1.0
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force .inno | Out-Null
+          gh release download $env:INNO_TAG --repo jrsoftware/issrc --pattern $env:INNO_ASSET --dir .inno
+          if ($LASTEXITCODE -ne 0) { throw "gh download exit code $LASTEXITCODE" }
+          $asset = Join-Path $PWD ".inno\$env:INNO_ASSET"
+          $actual = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:INNO_SHA256) { throw "Inno Setup SHA-256 mismatch: $actual" }
+          $sig = Get-AuthenticodeSignature $asset
+          if ($sig.Status -ne 'Valid') { throw "Inno Setup Authenticode status: $($sig.Status)" }
+          if ($sig.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') { throw "Unexpected Inno Setup publisher: $($sig.SignerCertificate.Subject)" }
+          $p = Start-Process -FilePath $asset -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup install exit code $($p.ExitCode)" }
+          $iscc = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Filter ISCC.exe -File -Recurse | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe not found after verified Inno Setup installation' }
+          "ISCC_PATH=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Compile LangTint Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packaging\installer\build | Out-Null
+          Copy-Item build\LangTint.exe packaging\installer\build\LangTint.exe
+          Copy-Item packaging\windows\LangTint.exe.manifest packaging\installer\build\LangTint.exe.manifest
+          & "$env:ISCC_PATH" /Qp packaging\installer\LangTint.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exit code $LASTEXITCODE" }
+          $setup = 'packaging\installer\output\LangTint-Setup-x64.exe'
+          if (-not (Test-Path $setup)) { throw 'Installer output missing' }
+          python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setup'))"
+          if ($LASTEXITCODE -ne 0) { throw "setup PE validation exit code $LASTEXITCODE" }
+          $sig = Get-AuthenticodeSignature $setup
+          if ($sig.Status -notin @('NotSigned','UnknownError')) { throw "Unexpected preview signing state: $($sig.Status)" }
+      - name: Assemble release preview assets
+        shell: pwsh
+        run: |
+          Copy-Item packaging\installer\output\LangTint-Setup-x64.exe dist\LangTint-Setup-x64.exe
+          $files = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name
+          $lines = foreach ($f in $files) { "{0}  {1}" -f (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $f.Name }
+          [System.IO.File]::WriteAllLines((Join-Path $PWD 'dist\SHA256SUMS.txt'), $lines, [System.Text.UTF8Encoding]::new($false))
+          Get-Content dist\SHA256SUMS.txt
+      - name: Upload tested installer and package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: LangTint-unsigned-${{ runner.os }}-${{ github.sha }}
+          name: LangTint-v1.7.0-Windows10-x64-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30

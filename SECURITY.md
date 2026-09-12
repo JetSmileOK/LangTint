@@ -6,4 +6,4 @@ Current scope is the documented Windows 10 x64 build, not Windows 11, a general-
 
 Release credentials belong in protected GitHub environments, never in code or logs. CI on pull requests must not receive production signing credentials. Any invalid/missing signing configuration or certificate must block signed output. Do not advise users to disable Defender or install a self-signed root certificate.
 
-The historical Go 1.23.2 baseline is retained for reproducibility of v1.5.3. Review a supported Go toolchain and its security updates before promoting a new production-signed release. Signing and green CI do not replace security maintenance.
+Release candidates are built with Go 1.27.1, the current stable toolchain reviewed for this candidate. Production releases must stay on a supported Go toolchain with current security fixes; signing and green CI do not replace security maintenance.

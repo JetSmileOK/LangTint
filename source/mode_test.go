@@ -20,7 +20,7 @@ func TestWatcherRequiresExplicitRun(t *testing.T) {
 }
 
 func TestKnownModes(t *testing.T) {
-	for _, want := range []string{"--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--status"} {
+	for _, want := range []string{"--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--stop", "--status"} {
 		if got := resolveMode([]string{want}); got != want {
 			t.Fatalf("resolveMode(%q)=%q", want, got)
 		}

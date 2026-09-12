@@ -2,21 +2,25 @@
 
 ## Status
 
-**Prepared only. No SignPath approval, certificate or production signing has been obtained through this repository change. Current builds are unsigned.** Never label a release signed unless its delivered executable passes Authenticode verification against the expected certificate.
+**Prepared only. SignPath Foundation approval and production signing are not active yet. Current v1.7.0 candidates are unsigned.**
 
-The project intends to apply for free open-source signing. After acceptance, the required attribution will be: **Free code signing provided by SignPath.io, certificate by SignPath Foundation.** This sentence describes the intended provider, not current sponsorship.
+Never label a release signed unless the actual downloadable artifacts pass Authenticode verification against the expected certificate and their post-signing hashes are published.
+
+The project intends to apply for free open-source signing. After acceptance, the required attribution will be: **Free code signing provided by SignPath.io, certificate by SignPath Foundation.** This describes the intended provider, not current sponsorship.
 
 ## Responsibilities
 
-Repository owner and proposed signing approver: [@JetSmileOK](https://github.com/JetSmileOK). External contributions require maintainer review. Signing approval must remain manual. All people with repository/signing access must enable multi-factor authentication before production signing. Their configuration has not been verified here.
+Repository owner and proposed signing approver: [@JetSmileOK](https://github.com/JetSmileOK). External changes require maintainer review. Signing approval remains manual. Repository/signing accounts must use multi-factor authentication before production signing.
 
 ## Release rules
 
-1. Build from reviewed public source in GitHub-hosted runners. Do not sign a local replacement executable.
-2. Pin workflow actions to full commit SHAs and keep tokens in GitHub environment secrets.
-3. Restrict signing to the default release branch and require environment approval plus SignPath production approval.
-4. Enforce product/version metadata. Verify Authenticode status, certificate identity and resulting executable hash before packaging.
-5. Recalculate checksums after signing. A signing error must stop the signed release, never silently substitute an unsigned file.
-6. Do not overwrite a published release's assets. Create a new version for a correction.
+1. Build from reviewed public source on GitHub-hosted runners. Never substitute a locally built executable.
+2. Pin workflow actions and external build-tool downloads to reviewed identities/digests.
+3. Keep signing credentials only in protected GitHub environments/secrets.
+4. Verify product/version metadata, certificate identity, timestamp and SHA-256 after signing.
+5. Sign the **runtime first**, compile the installer with that signed runtime, then sign and verify **`LangTint-Setup-x64.exe`**. A signed installer containing an unsigned runtime is not the intended production chain.
+6. Recalculate all release hashes after signing.
+7. A signing failure stops the release; it must never fall back silently to an unsigned asset.
+8. Never overwrite published release assets. Corrections get a new version.
 
-A signature authenticates publisher/integrity. It does not prove absence of bugs and does not guarantee SmartScreen reputation. See [Privacy](../privacy.md), [SignPath setup](signpath-setup.md) and the official [Foundation terms](https://signpath.org/terms.html).
+A valid signature authenticates publisher/integrity; it does not prove absence of bugs and does not guarantee immediate SmartScreen reputation.

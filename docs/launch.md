@@ -1,13 +1,30 @@
 # Launch checklist
 
-Repository display name: **LangTint**. Suggested repository slug: `LangTint` (owner setting; existing slug is unchanged here).
+Repository: **JetSmileOK/LangTint**.
 
-Suggested description: **See your keyboard layout before you type. A lightweight taskbar and cursor indicator for Windows.**
+Positioning: **See your keyboard layout before you type.** LangTint turns the Windows taskbar and pointer into a peripheral-vision layout cue; it does not rewrite text or guess what language you intended.
 
-Suggested topics: `windows`, `keyboard-layout`, `taskbar`, `cursor`, `productivity`, `golang`, `win32`.
+Before public promotion:
 
-Before promotion: publish a tested release with one obvious ZIP download; record a real 5–10 second RU/EN demo on Windows; document supported configurations and unsigned status; enable private vulnerability reporting; review install/uninstall instructions and code-signing eligibility. Do not fabricate a demo, testimonials, performance numbers or “100% compatibility”.
+- real Windows 10 x64 acceptance of `LangTint-Setup-x64.exe`;
+- upgrade from the old v1.6 one-click install;
+- uninstall from Settings → Apps and confirmation that taskbar/cursors return to normal;
+- reboot and autostart check;
+- sleep/resume and Explorer restart check;
+- multi-monitor check;
+- 5–10 second genuine RU → EN → RU screen recording;
+- publish one obvious recommended download: `LangTint-Setup-x64.exe`;
+- keep unsigned status visible until SignPath is actually active;
+- never claim Windows 11 or universal compatibility before real validation.
 
-Suggested post: “I kept typing in the wrong keyboard layout, so I made the layout visible in my taskbar and pointer. No text correction — just a color cue. LangTint currently targets Windows 10 x64. Feedback and compatibility reports welcome.”
+Suggested repository description:
 
-Share where relevant, follow community rules and ask for useful feedback. Do not buy stars, spam maintainers or open irrelevant issues to promote the project. Stars are not guaranteed; the useful idea, working download and trustworthy documentation are the pitch.
+> See your keyboard layout before you type. A lightweight taskbar and cursor indicator for Windows.
+
+Suggested topics: `windows`, `keyboard-layout`, `taskbar`, `cursor`, `productivity`, `win32`, `golang`, `language-switcher`.
+
+Suggested launch text:
+
+> I kept typing in the wrong keyboard layout, so I made the layout visible in my taskbar and pointer. No text correction, no language guessing — just a color cue you notice before typing. LangTint currently targets Windows 10 x64.
+
+Do not buy stars, spam unrelated repositories or fabricate benchmarks/testimonials. A simple idea, a trustworthy installer and a real visual demo are the product story.
