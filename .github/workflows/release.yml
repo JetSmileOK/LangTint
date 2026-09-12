@@ -17,6 +17,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.27.1'
+  PYTHONUTF8: '1'
   INNO_TAG: 'is-7_1_0'
   INNO_ASSET: 'innosetup-7.1.0-x64.exe'
   INNO_SHA256: '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
@@ -46,10 +47,15 @@ jobs:
           REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           $version = python tools/release.py config version
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read release version' }
           if ($env:REQUESTED_TAG -ne "v$version") { throw "Tag must equal v$version" }
-          git rev-parse --verify "refs/tags/$env:REQUESTED_TAG" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $tagCommit = git rev-list -n 1 $env:REQUESTED_TAG
+          # Missing tags are normal for a first release. Keep LASTEXITCODE zero:
+          # the Actions pwsh wrapper propagates it when this step finishes.
+          $existingTag = git tag --list -- $env:REQUESTED_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect Git tags' }
+          if ($existingTag) {
+            $tagCommit = git rev-parse --verify "refs/tags/$($env:REQUESTED_TAG)^{commit}"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve existing tag to a commit' }
             if ($tagCommit -ne $env:GITHUB_SHA) { throw 'Existing tag points to another commit' }
           }
 
@@ -57,10 +63,15 @@ jobs:
         shell: pwsh
         run: |
           python tools/release.py verify-source
+          if ($LASTEXITCODE -ne 0) { throw 'Source verification failed' }
           python tools/generate_icon.py
+          if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
           python tools/installer_assets.py --matrix
+          if ($LASTEXITCODE -ne 0) { throw 'Installer asset matrix failed' }
           python tools/release.py verify-installer
+          if ($LASTEXITCODE -ne 0) { throw 'Installer policy verification failed' }
           python -m unittest discover -s tools -p "test_*.py" -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python tests failed' }
           Push-Location source
           go test -count=100 ./...
           if ($LASTEXITCODE) { throw 'Go test x100 failed' }
@@ -82,8 +93,11 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path('build/LangTint.exe'))"
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime PE validation failed' }
           python tools/release.py stage --binary build/LangTint.exe --output stage --commit "$env:SOURCE_COMMIT"
+          if ($LASTEXITCODE -ne 0) { throw 'Package staging failed' }
           python tools/release.py package --stage stage --output internal-dist
+          if ($LASTEXITCODE -ne 0) { throw 'Internal package validation failed' }
           $portable = 'internal-dist\LangTint-v1.7.1-Windows10-x64-unsigned.zip'
           if (-not (Test-Path $portable)) { throw 'Internal portable package missing' }
 
@@ -119,6 +133,7 @@ jobs:
           $setupSource = 'packaging\installer\output\LangTint-Setup-x64.exe'
           if (-not (Test-Path $setupSource)) { throw 'Installer output missing' }
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setupSource'))"
+          if ($LASTEXITCODE -ne 0) { throw 'Setup PE validation failed' }
           python tools/installer_assets.py --scan-exe $setupSource
           if ($LASTEXITCODE -ne 0) { throw 'Compiled installer asset scan failed' }
           $sig = Get-AuthenticodeSignature $setupSource
@@ -165,8 +180,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_TAG: ${{ inputs.tag }}
         run: |
-          gh release view $env:REQUESTED_TAG *> $null
-          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; refusing to overwrite it' }
+          # A successful empty list means no release. Authentication/network
+          # failures must never be treated as permission to create a release.
+          $releaseJson = gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing releases' }
+          $releasePages = $releaseJson | ConvertFrom-Json -NoEnumerate
+          if ($releasePages -isnot [array]) { throw 'Invalid release list response' }
+          foreach ($page in $releasePages) {
+            if ($page -isnot [array]) { throw 'Invalid release page response' }
+            foreach ($release in $page) {
+              if ($release.tag_name -ceq $env:REQUESTED_TAG) {
+                throw 'Release already exists; refusing to overwrite it'
+              }
+            }
+          }
           @"
           Windows 10 x64 release candidate.
 
