@@ -33,8 +33,9 @@ CreateUninstallRegKey=yes
 UninstallFilesDir={app}
 LicenseFile=..\..\LICENSE
 WizardStyle=modern dynamic
-WizardSmallImageFile=..\..\assets\LangTint-256.png
-WizardSmallImageFileDynamicDark=..\..\assets\LangTint-256.png
+; Use plain BMP for Setup chrome. This deliberately avoids PNG/zlib decoding before the wizard opens.
+WizardSmallImageFile=..\..\assets\LangTint-WizardLight.bmp
+WizardSmallImageFileDynamicDark=..\..\assets\LangTint-WizardDark.bmp
 Compression=lzma2/max
 SolidCompression=yes
 CloseApplications=yes

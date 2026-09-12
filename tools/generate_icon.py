@@ -1,4 +1,4 @@
-"""Generate deterministic LangTint PNG/ICO assets using only Python stdlib."""
+"""Generate deterministic LangTint Windows icon and installer bitmap assets."""
 from __future__ import annotations
 from pathlib import Path
 import struct
@@ -11,6 +11,8 @@ BG = (24, 28, 36, 255)
 BLUE = (183, 233, 255, 255)  # product tint #B7E9FF
 DARK = (12, 17, 24, 255)
 WHITE = (245, 250, 252, 255)
+WIZARD_LIGHT_BG = (255, 255, 255)
+WIZARD_DARK_BG = (32, 32, 32)
 
 
 def inside_round_rect(x, y, n, margin, radius):
@@ -35,20 +37,20 @@ def point_in_poly(x, y, pts):
 
 
 def render(n: int) -> bytes:
-    # 4x supersampling gives clean small Windows icon edges without dependencies.
     ss = 4
     N = n * ss
     margin = N * 0.075
     radius = N * 0.18
     pixels = bytearray(n * n * 4)
 
-    # Cursor polygon normalized to the canvas. A dark larger polygon gives outline.
     arrow = [(0.31, 0.20), (0.31, 0.69), (0.43, 0.58), (0.52, 0.79),
              (0.62, 0.74), (0.53, 0.54), (0.70, 0.53)]
     center = (0.48, 0.50)
+
     def scale_poly(poly, factor):
         cx, cy = center
         return [((cx + (px-cx)*factor)*N, (cy + (py-cy)*factor)*N) for px, py in poly]
+
     arrow_outer = scale_poly(arrow, 1.10)
     arrow_inner = scale_poly(arrow, 1.00)
 
@@ -62,15 +64,12 @@ def render(n: int) -> bytes:
                     rgba = (0, 0, 0, 0)
                     if inside_round_rect(x, y, N, margin, radius):
                         rgba = BG
-                        # Ambient taskbar cue at bottom.
                         if y >= N * 0.77:
                             rgba = BLUE
-                        # Cursor dark outline then blue fill.
                         if point_in_poly(x, y, arrow_outer):
                             rgba = DARK
                         if point_in_poly(x, y, arrow_inner):
                             rgba = BLUE
-                        # Tiny highlight helps the cursor remain legible at 16px.
                         if N * 0.315 <= x <= N * 0.34 and N * 0.24 <= y <= N * 0.54:
                             rgba = WHITE
                     for k in range(4):
@@ -84,14 +83,36 @@ def render(n: int) -> bytes:
 def png_bytes(n: int) -> bytes:
     rgba = render(n)
     raw = b''.join(b'\x00' + rgba[y*n*4:(y+1)*n*4] for y in range(n))
+
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind+data)&0xffffffff)
+
     return (b'\x89PNG\r\n\x1a\n' +
-            chunk(b'IHDR', struct.pack('>IIBBBBB', n,n,8,6,0,0,0)) +
+            chunk(b'IHDR', struct.pack('>IIBBBBB', n, n, 8, 6, 0, 0, 0)) +
             chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b''))
 
 
-def write_ico(path: Path) -> None:
+def bmp24_bytes(n: int, background: tuple[int, int, int]) -> bytes:
+    rgba = render(n)
+    row_stride = ((n * 3 + 3) // 4) * 4
+    pixels = bytearray(row_stride * n)
+    for y in range(n):
+        dst_y = n - 1 - y
+        for x in range(n):
+            r, g, b, a = rgba[(y*n+x)*4:(y*n+x+1)*4]
+            r = (r*a + background[0]*(255-a) + 127) // 255
+            g = (g*a + background[1]*(255-a) + 127) // 255
+            b = (b*a + background[2]*(255-a) + 127) // 255
+            off = dst_y * row_stride + x * 3
+            pixels[off:off+3] = bytes((b, g, r))
+    offbits = 14 + 40
+    size = offbits + len(pixels)
+    file_header = struct.pack('<2sIHHI', b'BM', size, 0, 0, offbits)
+    info = struct.pack('<IIIHHIIIIII', 40, n, n, 1, 24, 0, len(pixels), 2835, 2835, 0, 0)
+    return file_header + info + pixels
+
+
+def ico_bytes() -> bytes:
     sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
     images = [(n, png_bytes(n)) for n in sizes]
     header = struct.pack('<HHH', 0, 1, len(images))
@@ -101,18 +122,23 @@ def write_ico(path: Path) -> None:
     for n, data in images:
         w = 0 if n == 256 else n
         h = 0 if n == 256 else n
-        entries.append(struct.pack('<BBBBHHII', w,h,0,0,1,32,len(data),offset))
+        entries.append(struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(data), offset))
         payload.append(data)
         offset += len(data)
-    path.write_bytes(header + b''.join(entries) + b''.join(payload))
+    return header + b''.join(entries) + b''.join(payload)
 
 
 def main():
     ASSETS.mkdir(parents=True, exist_ok=True)
-    # The branded wizard/README PNG is a reviewed repository asset. Do not
-    # overwrite it during CI. Generate only the Windows multi-size ICO.
-    write_ico(ASSETS/'LangTint.ico')
-    print('generated', ASSETS/'LangTint.ico')
+    outputs = {
+        ASSETS / 'LangTint.ico': ico_bytes(),
+        ASSETS / 'LangTint-WizardLight.bmp': bmp24_bytes(64, WIZARD_LIGHT_BG),
+        ASSETS / 'LangTint-WizardDark.bmp': bmp24_bytes(64, WIZARD_DARK_BG),
+    }
+    for path, data in outputs.items():
+        path.write_bytes(data)
+        print('generated', path)
+
 
 if __name__ == '__main__':
     main()

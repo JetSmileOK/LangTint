@@ -8,9 +8,11 @@
 /packaging/installer/output/
 /.inno/
 
-# Generated icon binaries (source is assets/LangTint.svg + tools/generate_icon.py)
+# Generated installer/icon binaries
 /assets/LangTint.ico
 /assets/LangTint-256.png
+/assets/LangTint-WizardLight.bmp
+/assets/LangTint-WizardDark.bmp
 
 # Python
 __pycache__/
