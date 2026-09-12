@@ -32,6 +32,7 @@ jobs:
         run: |
           python tools/release.py verify-source
           python tools/generate_icon.py
+          python tools/installer_assets.py --matrix
           python tools/release.py verify-installer
           python -m unittest discover -s tools -p "test_*.py" -v
       - name: Go suite x100
@@ -73,6 +74,7 @@ jobs:
         run: |
           python tools/release.py verify-source
           python tools/generate_icon.py
+          python tools/installer_assets.py --matrix
           python tools/release.py verify-installer
           python -m unittest discover -s tools -p "test_*.py" -v
       - name: Go tests x100
@@ -118,7 +120,7 @@ jobs:
           $iscc = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Filter ISCC.exe -File -Recurse | Select-Object -First 1
           if (-not $iscc) { throw 'ISCC.exe not found after verified Inno Setup installation' }
           "ISCC_PATH=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Compile LangTint Setup
+      - name: Compile and deep-check LangTint Setup
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force packaging\installer\build | Out-Null
@@ -130,8 +132,34 @@ jobs:
           if (-not (Test-Path $setup)) { throw 'Installer output missing' }
           python -c "from pathlib import Path; import sys; sys.path.insert(0,'tools'); import release; release.check_pe(Path(r'$setup'))"
           if ($LASTEXITCODE -ne 0) { throw "setup PE validation exit code $LASTEXITCODE" }
+          python tools/installer_assets.py --scan-exe $setup
+          if ($LASTEXITCODE -ne 0) { throw "compiled installer asset scan exit code $LASTEXITCODE" }
           $sig = Get-AuthenticodeSignature $setup
           if ($sig.Status -notin @('NotSigned','UnknownError')) { throw "Unexpected preview signing state: $($sig.Status)" }
+      - name: Execute compiled Setup startup smoke test
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path 'packaging\installer\output\LangTint-Setup-x64.exe').Path
+          $log = Join-Path $PWD 'setup-startup-smoke.log'
+          $args = @('/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$log")
+          $p = Start-Process -FilePath $setup -ArgumentList $args -PassThru
+          if (-not $p.WaitForExit(30000)) {
+            try { $p.Kill() } catch {}
+            throw 'Compiled Setup startup smoke test timed out'
+          }
+          if (-not (Test-Path $log)) { throw 'Compiled Setup did not create an Inno Setup log' }
+          $text = Get-Content $log -Raw
+          foreach ($needle in @('Could not decompress the image','invalid compressed data','data error (-3)')) {
+            if ($text.Contains($needle)) { throw "Compiled Setup image failure detected: $needle" }
+          }
+          $uninstall = Join-Path $env:LOCALAPPDATA 'Programs\LangTint\unins000.exe'
+          if (Test-Path $uninstall) {
+            $u = Start-Process -FilePath $uninstall -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru
+            if (-not $u.WaitForExit(30000)) {
+              try { $u.Kill() } catch {}
+              throw 'Smoke-test cleanup uninstall timed out'
+            }
+          }
       - name: Assemble release preview assets
         shell: pwsh
         run: |
