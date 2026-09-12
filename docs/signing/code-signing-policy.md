@@ -2,7 +2,7 @@
 
 ## Status
 
-**Prepared only. SignPath Foundation approval and production signing are not active yet. Current v1.7.0 candidates are unsigned.**
+**Prepared only. SignPath Foundation approval and production signing are not active yet. Current v1.7.1 candidates are unsigned.**
 
 Never label a release signed unless the actual downloadable artifacts pass Authenticode verification against the expected certificate and their post-signing hashes are published.
 

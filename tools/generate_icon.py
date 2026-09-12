@@ -109,7 +109,8 @@ def write_ico(path: Path) -> None:
 
 def main():
     ASSETS.mkdir(parents=True, exist_ok=True)
-    (ASSETS/'LangTint-256.png').write_bytes(png_bytes(256))
+    # The branded wizard/README PNG is a reviewed repository asset. Do not
+    # overwrite it during CI. Generate only the Windows multi-size ICO.
     write_ico(ASSETS/'LangTint.ico')
     print('generated', ASSETS/'LangTint.ico')
 

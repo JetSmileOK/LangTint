@@ -1,6 +1,6 @@
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "exe": "LangTint.exe",
-  "build_id": "LangTint_PUBLIC_v1.7.0_20260912",
+  "build_id": "LangTint_PUBLIC_v1.7.1_20260912",
   "go_version": "1.27.1"
 }

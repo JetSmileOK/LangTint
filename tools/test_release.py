@@ -51,7 +51,7 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError): release.verify_source(self.root)
 
     def test_config_rejects_version_injection(self):
-        c = self.c.copy(); c['version'] = '1.7.0; echo BAD'
+        c = self.c.copy(); c['version'] = '1.7.1; echo BAD'
         (self.root / 'packaging/release.json').write_text(json.dumps(c))
         with self.assertRaises(ValueError): release.config(self.root)
 
@@ -118,7 +118,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_installer_version_mismatch_rejected(self):
         p = self.root / 'packaging/installer/LangTint.iss'
-        p.write_text(p.read_text().replace('#define MyAppVersion "1.7.0"', '#define MyAppVersion "9.9.9"'))
+        p.write_text(p.read_text().replace('#define MyAppVersion "1.7.1"', '#define MyAppVersion "9.9.9"'))
         with self.assertRaises(ValueError): release.verify_installer_source(self.root)
 
     def test_installer_admin_request_rejected(self):
@@ -218,7 +218,7 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_release_workflow_builds_setup_and_portable(self):
         text = (self.root / '.github/workflows/release.yml').read_text(encoding='utf-8')
         self.assertIn('LangTint-Setup-x64.exe', text)
-        self.assertIn('LangTint-v1.7.0-Windows10-x64-unsigned.zip', text)
+        self.assertIn('LangTint-v1.7.1-Windows10-x64-unsigned.zip', text)
         self.assertIn('go test -count=100', text)
 
     def test_active_workflows_have_no_signpath_secret(self):

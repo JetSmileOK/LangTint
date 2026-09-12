@@ -285,8 +285,8 @@ func TestFailureMatrix100DistinctScenarios(t *testing.T) {
 	}
 
 	// 96-100: installer/startup safety invariants.
-	add("96_no_args_is_interactive_not_watcher", func(t *testing.T) {
-		if got := resolveMode(nil); got != "--interactive" {
+	add("96_no_args_is_safe_product_launch", func(t *testing.T) {
+		if got := resolveMode(nil); got != "--launch" {
 			t.Fatalf("got=%q", got)
 		}
 	})

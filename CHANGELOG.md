@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1 — product polish
+
+- Removes the legacy no-argument one-click self-installer and automatic Notepad report opening from `LangTint.exe`.
+- Makes `LangTint-Setup-x64.exe` the only normal installation entry point.
+- Shows the standard modern Welcome → Ready → Install → Finish wizard flow.
+- Keeps the installed program directory minimal: `LangTint.exe`, its manifest, the product icon and Inno Setup's standard uninstall files.
+- Moves runtime diagnostics out of the program directory into `%LOCALAPPDATA%\LangTint\Logs`.
+- Fixes the combined acceptance CPU test so stale `WM_QUIT` cannot produce a false 0-second PASS, and rejects wall times shorter than the requested duration.
+- Keeps preflight/uninstall diagnostics hidden in temporary files unless installation fails.
+
 ## 1.7.0 — installer release candidate
 
 - Carries forward the v1.6 public hardening runtime: localized layout fallback, Explorer ownership validation, bounded startup recovery and zero permanent polling.

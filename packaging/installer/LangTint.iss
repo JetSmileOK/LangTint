@@ -1,5 +1,5 @@
 #define MyAppName "LangTint"
-#define MyAppVersion "1.7.0"
+#define MyAppVersion "1.7.1"
 #define MyAppPublisher "JetSmileOK"
 #define MyAppURL "https://github.com/JetSmileOK/LangTint"
 #define MyAppExeName "LangTint.exe"
@@ -16,6 +16,9 @@ AppUpdatesURL=https://github.com/JetSmileOK/LangTint/releases
 DefaultDirName={localappdata}\Programs\LangTint
 DefaultGroupName=LangTint
 DisableProgramGroupPage=yes
+DisableWelcomePage=no
+DisableReadyPage=no
+DisableFinishedPage=no
 PrivilegesRequired=lowest
 SetupArchitecture=x64
 ArchitecturesAllowed=x64os
@@ -25,6 +28,9 @@ OutputBaseFilename=LangTint-Setup-x64
 SetupIconFile=..\..\assets\LangTint.ico
 UninstallDisplayName=LangTint
 UninstallDisplayIcon={app}\LangTint.ico
+Uninstallable=yes
+CreateUninstallRegKey=yes
+UninstallFilesDir={app}
 LicenseFile=..\..\LICENSE
 WizardStyle=modern dynamic
 WizardSmallImageFile=..\..\assets\LangTint-256.png
@@ -37,11 +43,11 @@ RestartIfNeededByRun=no
 SetupLogging=yes
 UsePreviousAppDir=yes
 UsePreviousLanguage=yes
-VersionInfoVersion=1.7.0.0
+VersionInfoVersion=1.7.1.0
 VersionInfoCompany=JetSmileOK
 VersionInfoDescription=LangTint Setup
 VersionInfoProductName=LangTint
-VersionInfoProductVersion=1.7.0
+VersionInfoProductVersion=1.7.1
 VersionInfoCopyright=Copyright (c) 2026 JetSmileOK
 
 [Languages]
@@ -55,8 +61,8 @@ english.LaunchNow=Launch LangTint now
 russian.LaunchNow=Запустить LangTint сейчас
 english.PreflightRunning=Checking Windows, Explorer taskbar and visual backend before installation...
 russian.PreflightRunning=Проверяю Windows, панель Explorer и визуальный механизм перед установкой...
-english.PreflightFailed=LangTint self-test failed. Installation was not changed. Diagnostic report: %1
-russian.PreflightFailed=Самопроверка LangTint не пройдена. Установка не изменена. Диагностический отчёт: %1
+english.PreflightFailed=LangTint could not verify compatibility. Nothing was installed. Diagnostic file: %1
+russian.PreflightFailed=LangTint не смог подтвердить совместимость. Ничего не установлено. Диагностика: %1
 english.StopFailed=An existing LangTint process could not be stopped safely. Close it and run Setup again.
 russian.StopFailed=Не удалось безопасно остановить работающий LangTint. Закройте его и запустите установщик снова.
 
@@ -72,10 +78,6 @@ Source: "build\LangTint.exe.manifest"; DestName: "LangTint-preflight.exe.manifes
 Source: "build\LangTint.exe"; DestDir: "{app}"; DestName: "LangTint.exe"; Flags: ignoreversion
 Source: "build\LangTint.exe.manifest"; DestDir: "{app}"; DestName: "LangTint.exe.manifest"; Flags: ignoreversion
 Source: "..\..\assets\LangTint.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\README.ru.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\docs\privacy.md"; DestDir: "{app}"; DestName: "PRIVACY.md"; Flags: ignoreversion
 
 [Registry]
 ; Always clear an old Run value first so unchecking the task really disables autostart on upgrade.
@@ -86,7 +88,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\LangTint.exe"; Parameters: "--run"; Description: "{cm:LaunchNow}"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
-Filename: "{app}\LangTint.exe"; Parameters: "--stop --report ""{localappdata}\LangTint\UninstallStopReport.txt"""; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\LangTint.exe"; Parameters: "--stop --report ""{tmp}\LangTint-UninstallStop.txt"""; Flags: runhidden waituntilterminated skipifdoesntexist
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\LangTint"
@@ -121,8 +123,7 @@ begin
     Exit;
   end;
 
-  PreflightReport := ExpandConstant('{localappdata}\LangTint\InstallerPreflight.txt');
-  ForceDirectories(ExtractFileDir(PreflightReport));
+  PreflightReport := ExpandConstant('{tmp}\LangTint-InstallerPreflight.txt');
   SelfTestParams := '--self-test --report "' + PreflightReport + '"';
 
   if not RunEmbeddedLangTint(SelfTestParams, ResultCode) then

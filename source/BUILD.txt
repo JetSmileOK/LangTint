@@ -1,3 +1,3 @@
-LangTint v1.7 build
+LangTint v1.7.1 build
 Target: Windows 10 x64
-Runtime core: v1.6 public hardening + installer maintenance command and consistent per-user Programs path.
+Runtime core: v1.6 public hardening + polished graphical installer and clean per-user program directory.

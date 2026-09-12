@@ -3,14 +3,15 @@ package main
 import "strings"
 
 func resolveMode(args []string) string {
-	// Safety invariant: no arguments means interactive acceptance/install,
-	// never a resident watcher from the source/download directory.
+	// Product invariant: the public EXE never self-installs. Setup is the only
+	// installation entry point. A no-argument launch is safe and only starts
+	// the already-installed background app (or explains which Setup to use).
 	if len(args) == 0 {
-		return "--interactive"
+		return "--launch"
 	}
 	for _, a := range args {
 		switch strings.ToLower(a) {
-		case "--run", "--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--stop", "--status":
+		case "--launch", "--run", "--self-test", "--idle-test", "--accept-install", "--install", "--uninstall", "--stop", "--status":
 			return strings.ToLower(a)
 		}
 	}

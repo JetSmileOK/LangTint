@@ -58,11 +58,11 @@ class InstallerPolicyTests(unittest.TestCase):
     def test_36_stop_preserves_autostart(self): self.assertIn('AUTOSTART_PRESERVED=YES', self.app)
     def test_37_stop_restores_taskbar(self): self.assertIn('restoreTaskbarNormal', self.app[self.app.index('func stopAndRestore'):self.app.index('func uninstall')])
     def test_38_stop_restores_cursors(self): self.assertIn('restoreSystemCursors', self.app[self.app.index('func stopAndRestore'):self.app.index('func uninstall')])
-    def test_39_no_args_never_run_mode(self): self.assertIn('return "--interactive"', self.mode)
+    def test_39_no_args_uses_safe_launch(self): self.assertIn('return "--launch"', self.mode)
     def test_40_runtime_requires_explicit_run(self): self.assertIn('"--run"', self.mode)
     def test_41_manifest_as_invoker(self): self.assertIn('requestedExecutionLevel level="asInvoker"', self.manifest)
     def test_42_manifest_x64(self): self.assertIn('processorArchitecture="amd64"', self.manifest)
-    def test_43_manifest_version(self): self.assertIn('version="1.7.0.0"', self.manifest)
+    def test_43_manifest_version(self): self.assertIn('version="1.7.1.0"', self.manifest)
     def test_44_icon_has_many_sizes(self):
         b=(ROOT/'assets/LangTint.ico').read_bytes(); self.assertEqual(b[:4], b'\0\0\1\0'); self.assertGreaterEqual(struct.unpack_from('<H', b, 4)[0], 8)
     def test_45_icon_has_256_entry(self):
@@ -75,7 +75,7 @@ class InstallerPolicyTests(unittest.TestCase):
     def test_51_no_restart_requested(self): self.assertIn('RestartIfNeededByRun=no', self.iss)
     def test_52_no_app_restart_magic(self): self.assertIn('RestartApplications=no', self.iss)
     def test_53_close_applications_enabled(self): self.assertIn('CloseApplications=yes', self.iss)
-    def test_54_preflight_report_persists_on_failure(self): self.assertIn(r'{localappdata}\LangTint\InstallerPreflight.txt', self.iss)
+    def test_54_preflight_report_is_temporary(self): self.assertIn(r'{tmp}\LangTint-InstallerPreflight.txt', self.iss); self.assertNotIn(r'{localappdata}\LangTint\InstallerPreflight.txt', self.iss)
     def test_55_selftest_does_not_use_sendinput(self):
         winapi=(ROOT/'source/winapi_windows.go').read_text(encoding='utf-8')
         self.assertNotIn('procSendInput', winapi); self.assertNotIn('SendInput.Call', winapi)
@@ -84,5 +84,24 @@ class InstallerPolicyTests(unittest.TestCase):
     def test_58_failure_matrix_present(self): self.assertTrue((ROOT/'source/failure_matrix_test.go').is_file())
     def test_59_hardening_logic_present(self): self.assertTrue((ROOT/'source/hardening_logic.go').is_file())
     def test_60_no_source_fragments_directory(self): self.assertFalse((ROOT/'tools/internal/source_fragments').exists())
+
+    def test_61_welcome_page_is_visible(self): self.assertIn('DisableWelcomePage=no', self.iss)
+    def test_62_ready_page_is_visible(self): self.assertIn('DisableReadyPage=no', self.iss)
+    def test_63_standard_uninstaller_in_app_dir(self): self.assertIn('UninstallFilesDir={app}', self.iss); self.assertIn('Uninstallable=yes', self.iss)
+    def test_64_installed_payload_is_minimal(self):
+        section=self.iss.split('[Files]',1)[1].split('[Registry]',1)[0]
+        installed=[ln for ln in section.splitlines() if ln.startswith('Source:') and 'dontcopy' not in ln]
+        self.assertEqual(len(installed),3, installed)
+        for forbidden in ('README.md','README.ru.md','PRIVACY.md','LICENSE.txt'):
+            self.assertNotIn(forbidden, section)
+    def test_65_no_notepad_product_path(self): self.assertNotIn('notepad.exe', self.app.lower())
+    def test_66_no_legacy_interactive_install(self): self.assertNotIn('--interactive', self.mode); self.assertNotIn('case "--interactive"', self.app)
+    def test_67_runtime_log_outside_program_dir(self): self.assertIn('filepath.Join(dataDir, "Logs", "LangTint.log")', self.app)
+    def test_68_idle_test_rejects_short_wall_time(self): self.assertIn('idle CPU wall time', self.app)
+    def test_69_acceptance_idle_runs_in_child(self): self.assertIn('runIdleCPUChild(idleReport, 10)', self.app)
+    def test_70_uninstall_stop_report_is_temporary(self): self.assertIn(r'{tmp}\LangTint-UninstallStop.txt', self.iss)
+    def test_71_icon_generator_preserves_branded_png(self):
+        gen=(ROOT/'tools/generate_icon.py').read_text(encoding='utf-8')
+        self.assertNotIn("(ASSETS/'LangTint-256.png').write_bytes", gen)
 
 if __name__ == '__main__': unittest.main()
