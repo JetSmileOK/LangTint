@@ -18,7 +18,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'Transport part hashes:'
+          sha256sum tools/.polish/part*.b64
+          echo 'Transport part sizes:'
+          wc -c tools/.polish/part*.b64
           cat tools/.polish/part*.b64 | base64 -d > /tmp/product-polish.patch
+          echo 'Reconstructed patch:'
+          sha256sum /tmp/product-polish.patch
+          wc -c /tmp/product-polish.patch
           echo 'c3357dbf4dff21b909b339d8fe4fdb674e68d0cb9704ee7dec43d33f3141e43e  /tmp/product-polish.patch' | sha256sum -c -
           git apply --check /tmp/product-polish.patch
           git apply /tmp/product-polish.patch
