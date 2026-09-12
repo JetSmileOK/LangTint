@@ -4,6 +4,7 @@
 
 <h1 align="center">LangTint</h1>
 <p align="center"><strong>See your keyboard layout before you type.</strong></p>
+<p align="center">Stop typing <code>ghbdtn</code>.</p>
 
 <p align="center">
   <a href="https://github.com/JetSmileOK/LangTint/actions/workflows/build.yml"><img src="https://github.com/JetSmileOK/LangTint/actions/workflows/build.yml/badge.svg" alt="CI"></a>
@@ -11,72 +12,94 @@
   <img src="https://img.shields.io/badge/Windows-10%20x64-0078D4.svg" alt="Windows 10 x64">
 </p>
 
-LangTint makes the active keyboard layout visible through **peripheral vision**. Instead of noticing the wrong layout after typing `ghbdtn`, you can see it before the first keystroke.
+LangTint turns your **Windows taskbar and mouse pointer into an ambient keyboard-layout indicator**. The active layout is visible in peripheral vision before you type the first character.
 
-[Русский](README.ru.md) · [Releases](https://github.com/JetSmileOK/LangTint/releases) · [Privacy](docs/privacy.md) · [Security](SECURITY.md)
+[Русский](README.ru.md) · [Releases](https://github.com/JetSmileOK/LangTint/releases) · [Roadmap](ROADMAP.md) · [Privacy](docs/privacy.md) · [Security](SECURITY.md)
 
-## What it does
+## The idea in 3 seconds
 
 | Active layout | Taskbar | Pointer |
 | --- | --- | --- |
 | **English** | light blue `#B7E9FF` | blue **Arrow** and **Hand** with a dark outline |
 | **Russian** | normal Windows taskbar | normal Windows cursor scheme |
 
-Text selection, resize, busy and other system cursors stay untouched. LangTint uses direct taskbar composition — **no translucent overlay over icons or text**.
+Text selection, resize, busy and other system cursors stay untouched. LangTint changes the real Explorer taskbar directly — **no translucent overlay over icons or text**.
 
 > **No text correction. No language guessing. No permanent polling. Just a visible layout.**
 
+## Why this approach is different
+
+Most layout helpers make you look at a tiny language code, draw another badge near the caret, or fix text after the mistake already happened. LangTint takes a different approach: make the state visible in UI you already see.
+
+| Approach | What you notice | When |
+| --- | --- | --- |
+| Windows language code | small `ENG/RUS/...` indicator | only when you look for it |
+| caret / popup badge | extra UI near text or pointer | while focusing on the badge |
+| auto-correction | rewritten text | after typing starts |
+| **LangTint** | taskbar + standard pointer change | **before typing, through peripheral vision** |
+
+LangTint does not inspect typed text, read the clipboard, or try to infer what language you intended.
+
 ## Install
 
-For normal users there is one file:
+Normal users need exactly **one file**:
 
-**`LangTint-Setup-x64.exe`**
+**`LangTint-Setup.exe`**
 
 Download it from [Releases](https://github.com/JetSmileOK/LangTint/releases) and double-click it. The installer:
 
 - installs only for the current Windows user;
 - requires **no administrator rights**;
-- offers **Start LangTint automatically with Windows**;
-- offers **Launch LangTint now** after installation;
-- runs LangTint's non-mutating visual self-test before enabling autostart;
+- offers autostart with Windows and launch-after-install options;
+- runs a non-mutating compatibility self-test before enabling autostart;
 - rolls back safely if the self-test fails;
 - registers a normal uninstall entry in **Settings → Apps → Installed apps**;
-- keeps the installed program folder minimal: app, manifest, icon and the standard uninstaller only;
-- never opens Notepad or developer reports after a successful installation;
+- keeps the installed folder minimal;
 - restores the Windows cursor scheme and removes LangTint autostart during uninstall.
 
-The installer is built with a modern light/dark UI and the LangTint icon. Until free code signing is activated, preview builds are **unsigned**, so Windows may show an unknown-publisher or reputation warning.
+Until free code signing is activated, preview builds are **unsigned**, so Windows may show an unknown-publisher or reputation warning.
 
 ## Compatibility
 
-The v1.7.1 candidate deliberately supports:
+The current v1.7.1 candidate deliberately supports:
 
-- Windows 10 x64, builds **14393 through 19045** (the runtime gate fails safe outside the validated Windows 10 range);
+- Windows 10 x64, builds **14393 through 19045**;
 - the standard Explorer taskbar;
 - one or more installed keyboard layouts, including RU/EN;
 - Alt+Shift, Ctrl+Shift and Win+Space switching.
 
-Windows 11, ARM64 and replacement/custom taskbars are rejected or left unsupported until they receive explicit real-machine validation. This is intentional fail-safe behavior, not a silent compatibility claim.
+Windows 11, ARM64 and replacement/custom taskbars are not claimed as supported until they receive explicit real-machine validation. See the [roadmap](ROADMAP.md).
 
-## Why it is lightweight
+## Lightweight by design
 
-- Event-driven keyboard-layout and foreground-window handling.
-- Direct taskbar composition; no overlay window.
-- Dedicated visual worker outside the keyboard callback.
-- No permanent layout polling.
-- No mouse hook.
-- No application telemetry or network client code.
-- No clipboard reading and no storage of typed text.
+- event-driven keyboard-layout and foreground-window handling;
+- direct taskbar composition, no overlay window;
+- dedicated visual worker outside the keyboard callback;
+- no permanent layout polling;
+- no mouse hook;
+- no application telemetry or network client code;
+- no clipboard reading and no storage of typed text.
 
-The low-level keyboard hook still receives Windows keyboard events so it can notice layout-switch shortcuts; see [Privacy](docs/privacy.md) for the exact scope.
+The low-level keyboard hook receives Windows keyboard events only so LangTint can notice layout-switch shortcuts. See [Privacy](docs/privacy.md) for the exact scope.
 
 ## Quality gates
 
-The v1.7 runtime includes a **100-scenario failure matrix** covering layout switching, localized Windows input-indicator names, taskbar ownership, startup recovery, event races and fail-safe behavior.
+The runtime includes a **100-scenario failure matrix** covering switching chords, localized Windows input-indicator names, taskbar ownership, startup recovery, event races and fail-safe behavior.
 
-The release pipeline separately checks installer policy, source hashes, Windows x64 PE structure, uninstall/autostart rules, release assets, and supply-chain pinning. CI pins the reviewed release toolchain to **Go 1.27.1** for reproducibility; toolchain upgrades are reviewed separately.
+The installer pipeline additionally validates image assets, source hashes, Windows x64 PE structure, autostart/uninstall rules, supply-chain pins and the compiled Setup itself. The compiled installer is actually started on a Windows CI runner so startup failures are caught before a release candidate is produced.
 
-A CI build is not described as an interactive Explorer compatibility test. Stable promotion still requires a real Windows 10 desktop acceptance pass.
+A hosted runner does not replace real Explorer acceptance; stable promotion still requires a real Windows desktop pass.
+
+## Roadmap
+
+The highest-impact next steps are:
+
+1. signed stable releases via SignPath Foundation;
+2. genuine Windows 11 validation/support;
+3. per-language color mapping instead of a fixed EN/RU presentation;
+4. WinGet/Scoop-style distribution after the stable signed release.
+
+See [ROADMAP.md](ROADMAP.md) and vote on feature issues with 👍.
 
 ## Build from source
 
@@ -89,24 +112,13 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./...
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags="-H=windowsgui -s -w" -o ../build/LangTint.exe .
 ```
 
-The installer source is [`packaging/installer/LangTint.iss`](packaging/installer/LangTint.iss). CI bootstraps the official Inno Setup 7.1.0 release only after checking its pinned SHA-256 and Authenticode publisher.
-
-## Repository layout
-
-```text
-assets/       LangTint product icon
-source/       application source and tests
-packaging/    installer, release metadata and signing preparation
-tools/        release, supply-chain and installer tests
-docs/         privacy, release and engineering notes
-.github/      CI and release automation
-```
+Installer source: [`packaging/installer/LangTint.iss`](packaging/installer/LangTint.iss).
 
 ## Contributing
 
-Bug reports and focused fixes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first and remove personal data from logs before posting them.
+Bug reports, compatibility reports and focused fixes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first and remove personal data from logs before posting them.
 
-If LangTint saves you from another `ghbdtn`, a ⭐ helps other people discover it.
+If LangTint saves you from another `ghbdtn`, **star the repository** — it directly helps other multilingual Windows users discover it.
 
 ---
 
